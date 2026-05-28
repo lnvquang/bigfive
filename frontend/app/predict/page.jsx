@@ -8,8 +8,7 @@ import Sidebar from "@/components/layouts/Sidebar";
 import styles from "./page.module.css";
 import ClusterCard from "@/components/cards/ClusterCard";
 import HelpfulnessCard from "@/components/cards/HelpfulnessCard";
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+import { analyzeReview } from "@/app/service/api/reviewApi";
 
 export default function PredictPage() {
     const [text, setText] = useState("");
@@ -47,48 +46,30 @@ export default function PredictPage() {
         setMultitaskResult(null);
 
         try {
-            // Call personality predict endpoint
-            const response = await fetch(`${BACKEND_URL}/predict`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ text }),
-            });
+            // Single endpoint: /api/reviews/analyze
+            // Expected shape (after analyzeReview): { multitask, personality, reviewId }
+            const analyzeResult = await analyzeReview(text);
 
-            if (!response.ok) {
-                throw new Error(`Backend trả về lỗi ${response.status}`);
-            }
+            const personality = analyzeResult?.personality;
+            const multitask = analyzeResult?.multitask;
 
-            const payload = await response.json();
             // Normalize values to 0-1 for the radar chart (accept either 0-1 or 0-100 inputs)
             const normalized = {};
-            Object.entries(payload).forEach(([k, v]) => {
-                if (typeof v === "number") {
-                    normalized[k] = v > 1 ? v / 100.0 : v;
-                } else {
-                    normalized[k] = v;
-                }
-            });
-            setResult(normalized);
-
-            // Call multitask predict endpoint
-            const multitaskResponse = await fetch(`${BACKEND_URL}/multitask-predict`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ text }),
-            });
-
-            if (multitaskResponse.ok) {
-                const multitaskPayload = await multitaskResponse.json();
-                setMultitaskResult(multitaskPayload);
-            } else {
-                console.warn("Multitask predict endpoint failed, using defaults");
+            if (personality && typeof personality === "object") {
+                Object.entries(personality).forEach(([k, v]) => {
+                    if (typeof v === "number") {
+                        normalized[k] = v > 1 ? v / 100.0 : v;
+                    } else {
+                        normalized[k] = v;
+                    }
+                });
             }
+
+            setResult(Object.keys(normalized).length ? normalized : null);
+            setMultitaskResult(multitask || null);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Lỗi không xác định");
+            const message = err?.response?.data?.message || err?.message || "Lỗi không xác định";
+            setError(message);
         } finally {
             setLoading(false);
         }
