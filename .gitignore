@@ -1,0 +1,28 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Virtual env
+bin/
+lib/
+include/
+pyvenv.cfg
+
+# Data / model
+datasets/
+saved_model/
+*.pt
+*.pth
+*.pkl
+*.h5
+*.ckpt
+
+# Frontend
+node_modules/
+
+# IDE
+.vscode/
+
+# Env
+.env
