@@ -19,7 +19,8 @@ public enum ErrorCode {
     PASSWORD_SAME_AS_OLD(400, "PASSWORD_SAME_AS_OLD", "Mật khẩu phải khác mật khẩu hiện tại"),
 
     TOKEN_INVALID(403,"TOKEN_INVALID","Token không hợp lệ"),
-    TOKEN_EXPIRED(403,"TOKEN_EXPIRED","Token hết hạn");
+    TOKEN_EXPIRED(403,"TOKEN_EXPIRED","Token hết hạn"),
+    TOKEN_NOT_FOUND(404,"TOKEN_NOT_FOUND","Không tìm thấy token");
 
 
     private final int status;

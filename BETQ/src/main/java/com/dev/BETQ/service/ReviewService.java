@@ -1,12 +1,19 @@
 package com.dev.BETQ.service;
 
+import com.dev.BETQ.config.JwtProperties;
 import com.dev.BETQ.dto.request.ReviewRequest;
 import com.dev.BETQ.dto.response.MultitaskResponse;
 import com.dev.BETQ.dto.response.PersonalityResponse;
 import com.dev.BETQ.dto.response.ReviewAnalysisResponse;
 import com.dev.BETQ.dto.response.ReviewHistoryResponse;
 import com.dev.BETQ.entity.CustomerReview;
+import com.dev.BETQ.entity.User;
+import com.dev.BETQ.exception.AppException;
+import com.dev.BETQ.exception.ErrorCode;
 import com.dev.BETQ.repository.CustomerReviewRepository;
+import com.dev.BETQ.repository.UserRepository;
+import com.nimbusds.jose.crypto.MACVerifier;
+import com.nimbusds.jwt.SignedJWT;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.*;
@@ -22,10 +29,31 @@ public class ReviewService {
     @Autowired
     private CustomerReviewRepository repository;
     @Autowired
+    private UserRepository userRepository;
+    @Autowired
     private RestTemplate restTemplate = new RestTemplate();
+    @Autowired
+    private JwtProperties jwtProperties;
 
-    public ReviewAnalysisResponse analyzeReview(ReviewRequest request) {
+    public ReviewAnalysisResponse analyzeReview(String token,ReviewRequest request)throws Exception {
 
+        if (token == null || token.isBlank()) {
+            throw new AppException(ErrorCode.TOKEN_NOT_FOUND);
+        }
+        String jwt = token.substring(7);
+        SignedJWT signedJWT = SignedJWT.parse(jwt);
+        if (!signedJWT.verify(new MACVerifier(jwtProperties.getSecret()))) {
+            throw new AppException(ErrorCode.TOKEN_INVALID);
+        }
+        Date expire = signedJWT.getJWTClaimsSet().getExpirationTime();
+        if (expire.before(new Date())) {
+            throw new AppException(ErrorCode.TOKEN_EXPIRED);
+        }
+
+        Long userId = Long.parseLong(signedJWT.getJWTClaimsSet().getSubject());
+        User user=userRepository.findById(userId).orElseThrow(
+                ()->new AppException(ErrorCode.USER_NOT_FOUND)
+        );
         PersonalityResponse personality = restTemplate.postForObject(
                 "http://127.0.0.1:8000/predict",
                 request,
@@ -52,6 +80,7 @@ public class ReviewService {
                 .helpfulnessAdvice(multitask.getHelpfulness().getAdvice())
                 .helpfulnessTotal(multitask.getHelpfulness().getTotal())
                 .createdAt(new Date())
+                .user(user)
                 .build();
 
         review = repository.save(review);
@@ -62,12 +91,5 @@ public class ReviewService {
                 .multitask(multitask)
                 .build();
     }
-    public List<ReviewHistoryResponse> getHistory() {
 
-        return repository.findAll(
-                        Sort.by(Sort.Direction.DESC, "createdAt")
-                ).stream()
-                .map(this::toHistoryResponse)
-                .toList();
-    }
 }

@@ -17,13 +17,13 @@ public class ReviewController {
     private ReviewService reviewService;
 
     @PostMapping("/analyze")
-    public ApiResponse<ReviewAnalysisResponse> analyze(
+    public ApiResponse<ReviewAnalysisResponse> analyze(@RequestHeader("Authorization") String token,
             @RequestBody ReviewRequest request
-    ) {
+    )throws Exception {
         return ApiResponse.<ReviewAnalysisResponse>builder()
                 .status(200)
                 .message("Lay analyze thanh cong")
-                .result(reviewService.analyzeReview(request))
+                .result(reviewService.analyzeReview(token,request))
                 .build();
     }
 }
