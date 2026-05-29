@@ -32,7 +32,10 @@ export default function Sidebar() {
                 <nav className="menu">
                     {menuItems.map((item) => {
                         const Icon = item.icon;
-                        const isActive = pathname === item.path;
+                        const isActive =
+                            item.path === "/history"
+                                ? pathname === "/history" || pathname?.startsWith?.("/history/")
+                                : pathname === item.path;
                         return (
                             <Link
                                 key={item.path}
