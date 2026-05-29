@@ -1,9 +1,9 @@
 package com.dev.BETQ.repository;
 
-import com.dev.BETQ.dto.response.BigFiveCountsResponse;
-import com.dev.BETQ.dto.response.ReviewByDateResponse;
-import com.dev.BETQ.dto.response.SentimentResponse;
+import com.dev.BETQ.dto.response.*;
 import com.dev.BETQ.entity.CustomerReview;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -72,4 +72,17 @@ public interface CustomerReviewRepository
     ORDER BY c.createdAt
 """)
     List<ReviewByDateResponse> getReviewStatisticsByDate();
+    @Query("""
+    SELECT new com.dev.BETQ.dto.response.AdminReviewHistoryResponse(
+        r.id,
+        u.id,
+        CONCAT(u.firstName,' ',u.lastName),
+        r.reviewText,
+        r.sentimentPositive,
+        r.createdAt
+    )
+    FROM CustomerReview r
+    JOIN r.user u
+""")
+    Page<AdminReviewHistoryResponse> getAllReviews(Pageable pageable);
 }

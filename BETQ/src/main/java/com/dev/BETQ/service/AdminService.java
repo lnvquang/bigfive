@@ -1,13 +1,17 @@
 package com.dev.BETQ.service;
 
 import com.dev.BETQ.dto.response.*;
+import com.dev.BETQ.entity.CustomerReview;
 import com.dev.BETQ.entity.User;
+import com.dev.BETQ.exception.AppException;
+import com.dev.BETQ.exception.ErrorCode;
 import com.dev.BETQ.repository.CustomerReviewRepository;
 import com.dev.BETQ.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -121,5 +125,82 @@ public class AdminService {
     }
     public List<ReviewByDateResponse> getReviewStatisticsByDate() {
         return customerReviewRepository.getReviewStatisticsByDate();
+    }
+    public UserDetailResponse getUserDetail(Long id) {
+
+        User user = userRepository.findById(id)
+                .orElseThrow(() ->
+                        new AppException(ErrorCode.USER_NOT_FOUND));
+
+        List<ReviewSummaryResponse> reviews = user.getReviews()
+                .stream()
+                .map(review -> ReviewSummaryResponse.builder()
+                        .id(review.getId())
+                        .reviewText(review.getReviewText())
+                        .sentimentPositive(review.getSentimentPositive())
+                        .createdAt(review.getCreatedAt())
+                        .build())
+                .toList();
+        return UserDetailResponse.builder()
+                .id(user.getId())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .status(user.getStatus())
+                .role(user.getRole())
+                .createdAt(user.getCreatedAt())
+                .reviews(reviews)
+                .build();
+    }
+    public ReviewDetailResponse getReviewDetail(Long reviewId) {
+
+        CustomerReview review = customerReviewRepository.findById(reviewId)
+                .orElseThrow(() ->
+                        new AppException(ErrorCode.REVIEW_NOTFOUND));
+
+        return ReviewDetailResponse.builder()
+                .id(review.getId())
+                .reviewText(review.getReviewText())
+
+                .openness(review.getOpenness())
+                .conscientiousness(review.getConscientiousness())
+                .extraversion(review.getExtraversion())
+                .agreeableness(review.getAgreeableness())
+                .neuroticism(review.getNeuroticism())
+
+                .sentimentNegative(review.getSentimentNegative())
+                .sentimentNeutral(review.getSentimentNeutral())
+                .sentimentPositive(review.getSentimentPositive())
+
+                .helpfulnessKeyAspects(review.getHelpfulnessKeyAspects())
+                .helpfulnessAdvice(review.getHelpfulnessAdvice())
+                .helpfulnessTotal(review.getHelpfulnessTotal())
+
+                .createdAt(review.getCreatedAt())
+                .build();
+    }
+    public PageResponse<AdminReviewHistoryResponse> getAllReviews(
+            int page,
+            int size
+    ) {
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by("createdAt").descending()
+        );
+
+        Page<AdminReviewHistoryResponse> reviewPage =
+                customerReviewRepository.getAllReviews(pageable);
+
+        return PageResponse.<AdminReviewHistoryResponse>builder()
+                .content(reviewPage.getContent())
+                .page(reviewPage.getNumber())
+                .size(reviewPage.getSize())
+                .totalElements(reviewPage.getTotalElements())
+                .totalPages(reviewPage.getTotalPages())
+                .last(reviewPage.isLast())
+                .build();
     }
 }

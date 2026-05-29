@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.Date;
+import java.util.List;
 
 @Entity
 @Table(name = "users")
@@ -32,5 +33,6 @@ public class User {
     private Boolean status;
     private String role;
     private Date createdAt;
-
+    @OneToMany(mappedBy = "user")
+    private List<CustomerReview> reviews;
 }
