@@ -156,7 +156,9 @@ export default function AuthenPage() {
                                         const current = await refreshUser();
                                         setUser(current || null);
 
-                                        if (current?.role === "CUSTOMER") {
+                                        if (current?.role === "ADMIN") {
+                                            router.push("/admin");
+                                        } else if (current?.role === "CUSTOMER") {
                                             router.push("/predict");
                                         } else {
                                             setLoginSuccess(true);
