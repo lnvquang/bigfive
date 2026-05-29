@@ -1,19 +1,76 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { getReviewsPageMock } from "@/app/admin/mockData";
+import { getAllReviews } from "@/app/service/api/admin";
 
 export default function AdminReviewsPage() {
-    const size = 2;
+    const size = 5;
     const [page, setPage] = useState(0);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
 
-    const reviewsPage = useMemo(() => getReviewsPageMock(page, size), [page]);
+    const [reviewsPage, setReviewsPage] = useState({
+        content: [],
+        page: 0,
+        size,
+        totalElements: 0,
+        totalPages: 1,
+        last: true,
+    });
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function load() {
+            setLoading(true);
+            setError("");
+            try {
+                const result = await getAllReviews({ page, size });
+                if (cancelled) return;
+
+                setReviewsPage({
+                    content: Array.isArray(result?.content) ? result.content : [],
+                    page:
+                        typeof result?.number === "number"
+                            ? result.number
+                            : typeof result?.page === "number"
+                              ? result.page
+                              : page,
+                    size: typeof result?.size === "number" ? result.size : size,
+                    totalElements:
+                        typeof result?.totalElements === "number" ? result.totalElements : 0,
+                    totalPages:
+                        typeof result?.totalPages === "number" ? result.totalPages : 1,
+                    last: !!result?.last,
+                });
+            } catch (err) {
+                if (cancelled) return;
+                const message = err?.response?.data?.message || err?.message || "Lỗi không xác định";
+                setError(message);
+                setReviewsPage((prev) => ({
+                    ...prev,
+                    content: [],
+                    totalElements: 0,
+                    totalPages: 1,
+                    last: true,
+                }));
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        }
+
+        load();
+        return () => {
+            cancelled = true;
+        };
+    }, [page, size]);
+
     const reviews = reviewsPage.content;
 
-    const startIndex = reviewsPage.page * reviewsPage.size + 1;
+    const startIndex = reviews.length === 0 ? 0 : reviewsPage.page * reviewsPage.size + 1;
     const endIndex = Math.min(
         reviewsPage.totalElements,
         reviewsPage.page * reviewsPage.size + reviews.length
@@ -65,13 +122,21 @@ export default function AdminReviewsPage() {
                 <div>
                     <h2 className="text-2xl font-semibold text-slate-100">Lịch sử đánh giá</h2>
                     <p className="mt-1 text-sm text-slate-400">
-                        Danh sách đánh giá (mock) để demo quản lý lịch sử.
+                        Danh sách đánh giá từ API admin.
                     </p>
                 </div>
                 <div className="text-sm text-slate-400">
-                    {reviewsPage.totalElements} bản ghi · page {reviewsPage.page + 1}/{reviewsPage.totalPages}
+                    {loading
+                        ? "Đang tải..."
+                        : `${reviewsPage.totalElements} bản ghi · page ${reviewsPage.page + 1}/${reviewsPage.totalPages}`}
                 </div>
             </div>
+
+            {error ? (
+                <div className="rounded-md border border-red-500 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                    {error}
+                </div>
+            ) : null}
 
             <section className="rounded-xl border border-slate-700 bg-slate-950 p-5">
                 <div className="overflow-x-auto">
@@ -82,8 +147,6 @@ export default function AdminReviewsPage() {
                                 <th className="py-3 pr-4">UserId</th>
                                 <th className="py-3 pr-4">Full name</th>
                                 <th className="py-3 pr-4">Sentiment +</th>
-                                <th className="py-3 pr-4">Sentiment -</th>
-                                <th className="py-3 pr-4">Helpfulness</th>
                                 <th className="py-3 pr-4">Thời gian</th>
                                 <th className="py-3 pr-4">Nội dung</th>
                                 <th className="py-3 pr-4"></th>
@@ -97,12 +160,6 @@ export default function AdminReviewsPage() {
                                     <td className="py-3 pr-4 text-slate-100">{r.fullName}</td>
                                     <td className="py-3 pr-4 text-slate-300">
                                         {Math.round((r.sentimentPositive || 0) * 100)}%
-                                    </td>
-                                    <td className="py-3 pr-4 text-slate-300">
-                                        {Math.round((r.sentimentNegative || 0) * 100)}%
-                                    </td>
-                                    <td className="py-3 pr-4 text-slate-300">
-                                        {Math.round((r.helpfulnessTotal || 0) * 100)}%
                                     </td>
                                     <td className="py-3 pr-4 text-slate-300">
                                         {formatDateTime(r.createdAt)}

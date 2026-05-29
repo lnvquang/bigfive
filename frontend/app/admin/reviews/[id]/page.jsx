@@ -1,8 +1,11 @@
+"use client";
+
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { getReviewDetailMock } from "@/app/admin/mockData";
+import { getReviewDetail } from "@/app/service/api/admin";
 
 function formatDateTime(isoString) {
     const date = new Date(isoString);
@@ -22,32 +25,95 @@ function normalize01(value) {
     return Math.max(0, Math.min(1, value / 100.0));
 }
 
-export default function AdminReviewDetailPage({ params }) {
-    const review = getReviewDetailMock(params?.id);
-    if (!review) notFound();
+export default function AdminReviewDetailPage() {
+    const router = useRouter();
+    const params = useParams();
+    const idParam = params?.id;
+    const reviewId = useMemo(() => {
+        const raw = Array.isArray(idParam) ? idParam[0] : idParam;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
+    }, [idParam]);
 
-    const positive = normalize01(review.sentimentPositive);
-    const negative = normalize01(review.sentimentNegative);
-    const neutral = Math.max(0, Math.min(1, 1 - positive - negative));
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [review, setReview] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function load() {
+            if (reviewId == null) {
+                setLoading(false);
+                setError("Review id không hợp lệ");
+                setReview(null);
+                return;
+            }
+
+            setLoading(true);
+            setError("");
+            try {
+                const detail = await getReviewDetail(reviewId);
+                if (cancelled) return;
+                setReview(detail || null);
+            } catch (err) {
+                if (cancelled) return;
+                const message = err?.response?.data?.message || err?.message || "Lỗi không xác định";
+                setError(message);
+                setReview(null);
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        }
+
+        load();
+        return () => {
+            cancelled = true;
+        };
+    }, [reviewId]);
+
+    const positive = normalize01(review?.sentimentPositive);
+    const negative = normalize01(review?.sentimentNegative);
+    const neutral = normalize01(review?.sentimentNeutral);
 
     return (
         <div className="space-y-6">
             <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-semibold text-slate-100">Chi tiết review</h2>
-                    <p className="mt-1 text-sm text-slate-400">Dữ liệu mock.</p>
+                    <p className="mt-1 text-sm text-slate-400">Dữ liệu từ API.</p>
                 </div>
-                <Link href="/admin/reviews">
-                    <Button variant="outline" size="sm">Quay lại</Button>
-                </Link>
+                <Button variant="outline" size="sm" onClick={() => router.back()}>
+                    Quay lại
+                </Button>
             </div>
 
+            {error ? (
+                <div className="rounded-md border border-red-500 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                    {error}
+                </div>
+            ) : null}
+
+            {loading ? (
+                <div className="text-sm text-slate-400">Đang tải...</div>
+            ) : null}
+
+            {!loading && !review ? (
+                <div className="space-y-3">
+                    <div className="text-sm text-slate-400">Không tìm thấy review.</div>
+                    <Link href="/admin/users">
+                        <Button variant="outline" size="sm">Về quản lý user</Button>
+                    </Link>
+                </div>
+            ) : null}
+
+            {review ? (
             <section className="rounded-xl border border-slate-700 bg-slate-950 p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <div className="text-lg font-semibold text-slate-100">Review #{review.id}</div>
                         <div className="text-sm text-slate-400">
-                            {review.fullName} · User #{review.userId} · {formatDateTime(review.createdAt)}
+                            {formatDateTime(review.createdAt)}
                         </div>
                     </div>
                     <div className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-sm text-slate-200">
@@ -100,6 +166,7 @@ export default function AdminReviewDetailPage({ params }) {
                     </div>
                 </div>
             </section>
+            ) : null}
         </div>
     );
 }

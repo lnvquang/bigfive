@@ -1,6 +1,6 @@
 import api from "../api";
 
-export const getUserList = async ({ page = 0, size = 10, keyword } = {}) => {
+export const getUserList = async ({ page = 0, size = 5, keyword } = {}) => {
     const params = {
         page,
         size,
@@ -30,6 +30,27 @@ export const getBigFive = async () => {
 };
 export const getReviewsByDate = async () => {
     const response = await api.get("/admin/statistics/reviews-by-date");
+
+    return response.data.result;
+};
+export const getDetailUser = async (id) => {
+
+    const response = await api.get(`/admin/user/detail/${id}`);
+
+    return response.data.result;
+};
+export const getReviewDetail = async (reviewId) => {
+    const response = await api.get(
+        `/admin/reviews/${reviewId}`
+    );
+
+    return response.data.result;
+};
+
+export const getAllReviews = async ({ page = 0, size = 5 } = {}) => {
+    const response = await api.get("/admin/reviews", {
+        params: { page, size },
+    });
 
     return response.data.result;
 };
