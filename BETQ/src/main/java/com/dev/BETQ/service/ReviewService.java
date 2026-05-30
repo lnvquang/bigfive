@@ -74,19 +74,19 @@ public class ReviewService {
                 .reviewText(request.getText())
 
                 .openness(
-                        aiResult.getPersonality_probs().getOpenness()
+                        aiResult.getPersonality_logits().getOpenness()
                 )
                 .conscientiousness(
-                        aiResult.getPersonality_probs().getConscientiousness()
+                        aiResult.getPersonality_logits().getConscientiousness()
                 )
                 .extraversion(
-                        aiResult.getPersonality_probs().getExtraversion()
+                        aiResult.getPersonality_logits().getExtraversion()
                 )
                 .agreeableness(
-                        aiResult.getPersonality_probs().getAgreeableness()
+                        aiResult.getPersonality_logits().getAgreeableness()
                 )
                 .neuroticism(
-                        aiResult.getPersonality_probs().getNeuroticism()
+                        aiResult.getPersonality_logits().getNeuroticism()
                 )
 
 
@@ -139,6 +139,7 @@ public class ReviewService {
 
         return ReviewAnalysisResponse.builder()
                 .reviewId(review.getId())
+                .personality_logits(aiResult.getPersonality_logits())
                 .personality(aiResult.getPersonality_probs())
                 .multitask(aiResult.getMultitask())
                 .cluster(aiResult.getCluster())

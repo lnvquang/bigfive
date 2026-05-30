@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @AllArgsConstructor
 public class ReviewAiResponse {
+    private PersonalityResponse personality_logits;
     private PersonalityResponse personality_probs;
     private MultitaskResponse multitask;
     private Integer cluster;

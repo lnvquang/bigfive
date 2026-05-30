@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 public class ReviewAnalysisResponse {
     private Long reviewId;
     private PersonalityResponse personality;
+    private PersonalityResponse personality_logits;
     private MultitaskResponse multitask;
     private Integer cluster;
     private String cluster_label;

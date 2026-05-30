@@ -20,10 +20,7 @@ export default function PredictPage() {
 
     function formatScore(value) {
         if (typeof value !== "number") return "-";
-        if (value <= 1) {
-            return `${Math.round(value * 100)}%`;
-        }
-        return value.toFixed(0);
+        return value.toFixed(2);
     }
 
     function getSentimentLabel(sentimentObj) {
@@ -49,20 +46,20 @@ export default function PredictPage() {
 
         try {
             // Single endpoint: /api/reviews/analyze
-            // Expected shape (after analyzeReview): { multitask, personality, reviewId }
+            // Expected shape (after analyzeReview): { multitask, personality_logits, personality_probs, reviewId }
             const analyzeResult = await analyzeReview(text);
 
             setAnalysis(analyzeResult || null);
 
-            const personality = analyzeResult?.personality;
+            const personality = analyzeResult?.personality_logits ?? analyzeResult?.personality;
             const multitask = analyzeResult?.multitask;
 
-            // Normalize values to 0-1 for the radar chart (accept either 0-1 or 0-100 inputs)
+            // Keep raw logits when available; only pass numeric values through.
             const normalized = {};
             if (personality && typeof personality === "object") {
                 Object.entries(personality).forEach(([k, v]) => {
                     if (typeof v === "number") {
-                        normalized[k] = v > 1 ? v / 100.0 : v;
+                        normalized[k] = v;
                     } else {
                         normalized[k] = v;
                     }
@@ -140,7 +137,7 @@ export default function PredictPage() {
                                                     className="rounded-xl border border-slate-700 bg-slate-950 p-4"
                                                 >
                                                     <div className="text-sm uppercase tracking-[0.18em] text-slate-500">
-                                                        {trait}
+                                                        {trait} logits
                                                     </div>
                                                     <div className="mt-2 text-3xl font-semibold text-slate-100">
                                                         {formatScore(value)}
