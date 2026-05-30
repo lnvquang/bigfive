@@ -1,4 +1,5 @@
 import AdminSidebar from "@/components/layouts/AdminSidebar";
+import AdminTopbar from "@/components/layouts/AdminTopbar";
 
 export const metadata = {
     title: "Admin | Big Five AI Dashboard",
@@ -6,13 +7,11 @@ export const metadata = {
 
 export default function AdminLayout({ children }) {
     return (
-        <div className="flex min-h-screen">
+        <div className="flex min-h-screen bg-black text-white">
             <AdminSidebar />
 
             <div className="flex-1">
-                <header className="h-16 border-b border-zinc-800 flex items-center px-6">
-                    <h1 className="text-2xl font-bold text-slate-100">Admin</h1>
-                </header>
+                <AdminTopbar />
 
                 <main className="p-8">{children}</main>
             </div>

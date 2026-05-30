@@ -81,7 +81,7 @@ export default function AdminReviewDetailPage() {
             <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-semibold text-slate-100">Chi tiết review</h2>
-                    <p className="mt-1 text-sm text-slate-400">Dữ liệu từ API.</p>
+                   
                 </div>
                 <Button variant="outline" size="sm" onClick={() => router.back()}>
                     Quay lại

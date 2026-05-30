@@ -54,3 +54,19 @@ export const getAllReviews = async ({ page = 0, size = 5 } = {}) => {
 
     return response.data.result;
 };
+export const lockCustomer = async (userId) => {
+  const res = await api.put("/admin/lock", null, {
+    params: {
+      userId: userId,
+    },
+  });
+  return res.data.result;
+};
+export const unlockCustomer = async (userId) => {
+  const res = await api.put("/admin/unlock", null, {
+    params: {
+      userId: userId,
+    },
+  });
+  return res.data.result;
+};

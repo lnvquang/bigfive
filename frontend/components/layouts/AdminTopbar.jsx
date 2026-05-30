@@ -2,40 +2,38 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, LogOut, Sparkles } from "lucide-react";
+import { ChevronDown, LogOut, ShieldCheck } from "lucide-react";
 
 import { useUser } from "@/app/context/UserContext";
 import { handleLogout } from "@/app/service/api/authen";
 import { sessionStore } from "@/app/service/sessionStore";
 import { Button } from "@/components/ui/button";
 
-
-export default function Navbar() {
+export default function AdminTopbar() {
     const router = useRouter();
     const { user, clearUser } = useUser();
-    const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
 
-    // Thêm state để kiểm tra component đã mount trên client chưa
+    // Xử lý lỗi Hydration mismatch của Next.js
     const [isMounted, setIsMounted] = useState(false);
     const [open, setOpen] = useState(false);
     const menuRef = useRef(null);
+
+    const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
+    const hasToken = !!sessionStore.getAccessToken?.();
 
     const initials = useMemo(() => {
         const first = (user?.firstName || "").trim();
         const last = (user?.lastName || "").trim();
         const a = first ? first[0] : "";
         const b = last ? last[0] : "";
-        return `${a}${b}`.toUpperCase() || "U";
+        return `${a}${b}`.toUpperCase() || "A";
     }, [user?.firstName, user?.lastName]);
-
-    const hasToken = !!sessionStore.getAccessToken?.();
 
     const onLogout = async () => {
         try {
             await handleLogout();
-        } catch(error) {
-           console.log(error);
-           
+        } catch {
+            // Vẫn xóa session local nếu API lỗi
         } finally {
             sessionStore.clearAccessToken();
             clearUser?.();
@@ -49,12 +47,10 @@ export default function Navbar() {
         }
     }, []);
 
-    // Effect 1: Đánh dấu component đã mount xong trên client
     useEffect(() => {
         setIsMounted(true);
     }, []);
 
-    // Effect 2: Xử lý click outside
     useEffect(() => {
         if (!open) return;
         document.addEventListener("mousedown", handleClickOutside);
@@ -66,21 +62,19 @@ export default function Navbar() {
     }, [open, handleClickOutside]);
 
     return (
-        <nav className="sticky top-0 z-50 flex h-16 w-full items-center justify-between border-b border-zinc-800/60 bg-black/80 px-6 backdrop-blur-md">
-            {/* Logo Section */}
+        <header className="sticky top-0 z-50 flex h-16 w-full items-center justify-between border-b border-zinc-800/60 bg-black/80 px-6 backdrop-blur-md">
+            {/* Branding / Admin Identity */}
             <div className="flex items-center gap-3 select-none">
-                <div className="flex items-center justify-center rounded-lg bg-zinc-800 p-1.5 text-slate-100">
-                    <Sparkles size={18} />
+                <div className="flex items-center justify-center rounded-lg bg-emerald-500/10 p-1.5 text-emerald-500">
+                    <ShieldCheck size={18} />
                 </div>
                 <div className="flex items-baseline gap-2">
-                    <h1 className="text-xl font-bold tracking-tight text-slate-100">BigFive AI</h1>
-                    <span className="rounded-full bg-zinc-800/50 px-2 py-0.5 text-xs font-medium text-slate-400">
-                        Dashboard
-                    </span>
+                    <h1 className="text-xl font-bold tracking-tight text-slate-100">Admin Portal</h1>
+                    <span className="text-sm font-medium text-slate-500">BigFive AI</span>
                 </div>
             </div>
 
-            {/* User Section - Chỉ render khi đã mounted trên client */}
+            {/* User Profile / Actions */}
             {isMounted && hasToken && (
                 <div className="relative" ref={menuRef}>
                     <Button
@@ -90,11 +84,11 @@ export default function Navbar() {
                         aria-expanded={open}
                         className="group flex h-10 items-center gap-3 rounded-full border border-transparent px-2 hover:bg-zinc-900 hover:border-zinc-800 transition-all"
                     >
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-xs font-semibold text-slate-200 group-hover:bg-zinc-700 transition-colors">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white shadow-sm transition-colors group-hover:bg-emerald-700">
                             {initials}
                         </span>
                         <span className="hidden text-sm font-medium text-slate-200 sm:block">
-                            {fullName || "Tài khoản"}
+                            {fullName || "Quản trị viên"}
                         </span>
                         <ChevronDown 
                             size={16} 
@@ -102,7 +96,7 @@ export default function Navbar() {
                         />
                     </Button>
 
-                    {/* Dropdown Menu */}
+                    {/* Animated Dropdown Menu */}
                     <div
                         className={`absolute right-0 mt-2 w-52 origin-top-right rounded-xl border border-zinc-800 bg-zinc-950 p-1.5 shadow-2xl transition-all duration-200 ease-out ${
                             open
@@ -112,7 +106,7 @@ export default function Navbar() {
                     >
                         <div className="px-2 py-2.5 sm:hidden">
                             <p className="text-sm font-medium text-slate-200 truncate">
-                                {fullName || "Tài khoản"}
+                                {fullName || "Quản trị viên"}
                             </p>
                         </div>
                         <div className="h-px bg-zinc-800 my-1 sm:hidden" />
@@ -131,6 +125,6 @@ export default function Navbar() {
                     </div>
                 </div>
             )}
-        </nav>
+        </header>
     );
 }

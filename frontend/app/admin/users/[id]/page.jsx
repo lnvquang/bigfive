@@ -122,7 +122,7 @@ export default function AdminUserDetailPage() {
             <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                     <h2 className="text-2xl font-semibold text-slate-100">Chi tiết user</h2>
-                    <p className="mt-1 text-sm text-slate-400">Dữ liệu từ API.</p>
+                   
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <Button

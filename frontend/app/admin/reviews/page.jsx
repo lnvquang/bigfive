@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { MessageSquare, Loader2, ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { getAllReviews } from "@/app/service/api/admin";
@@ -33,17 +34,14 @@ export default function AdminReviewsPage() {
 
                 setReviewsPage({
                     content: Array.isArray(result?.content) ? result.content : [],
-                    page:
-                        typeof result?.number === "number"
-                            ? result.number
-                            : typeof result?.page === "number"
-                              ? result.page
-                              : page,
+                    page: typeof result?.number === "number"
+                        ? result.number
+                        : typeof result?.page === "number"
+                          ? result.page
+                          : page,
                     size: typeof result?.size === "number" ? result.size : size,
-                    totalElements:
-                        typeof result?.totalElements === "number" ? result.totalElements : 0,
-                    totalPages:
-                        typeof result?.totalPages === "number" ? result.totalPages : 1,
+                    totalElements: typeof result?.totalElements === "number" ? result.totalElements : 0,
+                    totalPages: typeof result?.totalPages === "number" ? result.totalPages : 1,
                     last: !!result?.last,
                 });
             } catch (err) {
@@ -69,24 +67,20 @@ export default function AdminReviewsPage() {
     }, [page, size]);
 
     const reviews = reviewsPage.content;
-
     const startIndex = reviews.length === 0 ? 0 : reviewsPage.page * reviewsPage.size + 1;
-    const endIndex = Math.min(
-        reviewsPage.totalElements,
-        reviewsPage.page * reviewsPage.size + reviews.length
-    );
+    const endIndex = Math.min(reviewsPage.totalElements, reviewsPage.page * reviewsPage.size + reviews.length);
 
     function getPageItems(currentPage, totalPages, maxButtons = 5) {
         const safeTotal = Math.max(1, totalPages);
         const safeCurrent = Math.max(0, Math.min(currentPage, safeTotal - 1));
-
         const max = Math.max(3, maxButtons);
+        
         if (safeTotal <= max) {
             return Array.from({ length: safeTotal }, (_, i) => ({ type: "page", page: i }));
         }
 
         const items = [];
-        const windowSize = max - 2; // keep first + last
+        const windowSize = max - 2; 
         let start = Math.max(1, safeCurrent - Math.floor(windowSize / 2));
         let end = start + windowSize - 1;
         if (end > safeTotal - 2) {
@@ -95,11 +89,9 @@ export default function AdminReviewsPage() {
         }
 
         items.push({ type: "page", page: 0 });
-
         if (start > 1) items.push({ type: "ellipsis" });
         for (let p = start; p <= end; p += 1) items.push({ type: "page", page: p });
         if (end < safeTotal - 2) items.push({ type: "ellipsis" });
-
         items.push({ type: "page", page: safeTotal - 1 });
         return items;
     }
@@ -116,115 +108,157 @@ export default function AdminReviewsPage() {
         }).format(date);
     }
 
+    // Helper function để định dạng màu sắc cho cảm xúc (Sentiment)
+    function getSentimentBadge(positiveValue) {
+        const value = Math.round((positiveValue || 0) * 100);
+        if (value >= 70) {
+            return { text: `${value}% Tích cực`, color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" };
+        }
+        if (value >= 40) {
+            return { text: `${value}% Trung lập`, color: "bg-amber-500/10 text-amber-400 border-amber-500/20" };
+        }
+        return { text: `${value}% Tiêu cực`, color: "bg-red-500/10 text-red-400 border-red-500/20" };
+    }
+
     return (
         <div className="space-y-6">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                    <h2 className="text-2xl font-semibold text-slate-100">Lịch sử đánh giá</h2>
-                    <p className="mt-1 text-sm text-slate-400">
-                        Danh sách đánh giá từ API admin.
-                    </p>
+            {/* Header */}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
+                        <MessageSquare size={20} />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold tracking-tight text-slate-100">Lịch sử đánh giá</h2>
+                        <p className="text-sm text-slate-400">
+                            Quản lý và theo dõi phản hồi từ người dùng hệ thống.
+                        </p>
+                    </div>
                 </div>
-                <div className="text-sm text-slate-400">
-                    {loading
-                        ? "Đang tải..."
-                        : `${reviewsPage.totalElements} bản ghi · page ${reviewsPage.page + 1}/${reviewsPage.totalPages}`}
+
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                    {loading && <Loader2 size={14} className="animate-spin text-emerald-500" />}
+                    <span>{loading ? "Đang tải dữ liệu..." : `Tổng cộng ${reviewsPage.totalElements} đánh giá`}</span>
                 </div>
             </div>
 
-            {error ? (
-                <div className="rounded-md border border-red-500 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {/* Error Message */}
+            {error && (
+                <div className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-400">
                     {error}
                 </div>
-            ) : null}
+            )}
 
-            <section className="rounded-xl border border-slate-700 bg-slate-950 p-5">
+            {/* Data Table */}
+            <section className="flex flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/50 shadow-sm">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="text-slate-400">
-                            <tr className="border-b border-slate-800">
-                                <th className="py-3 pr-4">#</th>
-                                <th className="py-3 pr-4">UserId</th>
-                                <th className="py-3 pr-4">Full name</th>
-                                <th className="py-3 pr-4">Sentiment +</th>
-                                <th className="py-3 pr-4">Thời gian</th>
-                                <th className="py-3 pr-4">Nội dung</th>
-                                <th className="py-3 pr-4"></th>
+                    <table className="w-full text-left text-sm whitespace-nowrap">
+                        <thead className="bg-zinc-900/50 text-xs uppercase tracking-wider text-slate-400">
+                            <tr className="border-b border-zinc-800/80">
+                                <th className="px-5 py-4 font-medium">#ID</th>
+                                <th className="px-5 py-4 font-medium">Người đánh giá</th>
+                                <th className="px-5 py-4 font-medium">Cảm xúc</th>
+                                <th className="px-5 py-4 font-medium">Thời gian</th>
+                                <th className="px-5 py-4 font-medium w-full max-w-[300px]">Nội dung</th>
+                                <th className="px-5 py-4 font-medium text-right">Thao tác</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            {reviews.map((r) => (
-                                <tr key={r.id} className="border-b border-slate-900">
-                                    <td className="py-3 pr-4 text-slate-200">{r.id}</td>
-                                    <td className="py-3 pr-4 text-slate-300">{r.userId}</td>
-                                    <td className="py-3 pr-4 text-slate-100">{r.fullName}</td>
-                                    <td className="py-3 pr-4 text-slate-300">
-                                        {Math.round((r.sentimentPositive || 0) * 100)}%
-                                    </td>
-                                    <td className="py-3 pr-4 text-slate-300">
-                                        {formatDateTime(r.createdAt)}
-                                    </td>
-                                    <td className="py-3 pr-4 text-slate-300">{r.reviewText}</td>
-                                    <td className="py-3 pr-4">
-                                        <Link href={`/admin/reviews/${r.id}`}>
-                                            <Button variant="outline" size="sm">
-                                                Xem
-                                            </Button>
-                                        </Link>
+                        <tbody className="divide-y divide-zinc-800/80">
+                            {reviews.length === 0 && !loading ? (
+                                <tr>
+                                    <td colSpan={6} className="py-10 text-center text-slate-500">
+                                        Không có đánh giá nào được tìm thấy.
                                     </td>
                                 </tr>
-                            ))}
+                            ) : (
+                                reviews.map((r) => {
+                                    const sentiment = getSentimentBadge(r.sentimentPositive);
+                                    return (
+                                        <tr key={r.id} className="transition-colors hover:bg-zinc-900/40">
+                                            <td className="px-5 py-3 font-medium text-slate-400">{r.id}</td>
+                                            <td className="px-5 py-3">
+                                                <div className="font-medium text-slate-200">{r.fullName || "Ẩn danh"}</div>
+                                                <div className="text-xs text-slate-500">User ID: {r.userId}</div>
+                                            </td>
+                                            <td className="px-5 py-3">
+                                                <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${sentiment.color}`}>
+                                                    {sentiment.text}
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-3 text-slate-400">
+                                                {formatDateTime(r.createdAt)}
+                                            </td>
+                                            <td className="px-5 py-3">
+                                                {/* Cắt chữ nếu đánh giá quá dài */}
+                                                <div 
+                                                    className="max-w-[200px] truncate text-slate-300 sm:max-w-[300px]" 
+                                                    title={r.reviewText}
+                                                >
+                                                    {r.reviewText || <span className="text-slate-600 italic">Không có nội dung</span>}
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-3 text-right">
+                                                <Link href={`/admin/reviews/${r.id}`}>
+                                                    <Button variant="ghost" size="sm" className="h-8 gap-1 text-slate-400 hover:text-slate-100">
+                                                        Xem <ArrowRight size={14} />
+                                                    </Button>
+                                                </Link>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
                         </tbody>
                     </table>
                 </div>
 
-                <div className="mt-4 flex flex-col gap-3 border-t border-slate-800 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-sm text-slate-400">
-                        Hiển thị {startIndex}-{endIndex} / {reviewsPage.totalElements} (size {reviewsPage.size})
+                {/* Pagination */}
+                <div className="flex flex-col gap-4 border-t border-zinc-800/80 bg-zinc-900/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-xs text-slate-400">
+                        Hiển thị <span className="font-medium text-slate-200">{startIndex}</span> đến <span className="font-medium text-slate-200">{endIndex}</span> trong số <span className="font-medium text-slate-200">{reviewsPage.totalElements}</span>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                         <Button
                             variant="outline"
                             size="sm"
+                            className="h-8 border-zinc-700 bg-transparent text-xs text-slate-300 hover:bg-zinc-800 hover:text-slate-100"
                             disabled={reviewsPage.page <= 0}
                             onClick={() => setPage((p) => Math.max(0, p - 1))}
                         >
-                            Prev
+                            Trước
                         </Button>
 
-                        {getPageItems(reviewsPage.page, reviewsPage.totalPages, 5).map((item, idx) => {
-                            if (item.type === "ellipsis") {
+                        <div className="flex items-center gap-1 px-2">
+                            {getPageItems(reviewsPage.page, reviewsPage.totalPages, 5).map((item, idx) => {
+                                if (item.type === "ellipsis") {
+                                    return <span key={`ellipsis-${idx}`} className="px-1 text-xs text-slate-500">...</span>;
+                                }
+                                const isActive = item.page === reviewsPage.page;
                                 return (
-                                    <span
-                                        key={`ellipsis-${idx}`}
-                                        className="px-2 text-sm text-slate-500"
+                                    <button
+                                        key={`page-${item.page}`}
+                                        onClick={() => setPage(item.page)}
+                                        className={`flex h-7 w-7 items-center justify-center rounded-md text-xs font-medium transition-colors ${
+                                            isActive 
+                                                ? "bg-zinc-700 text-slate-100" 
+                                                : "text-slate-400 hover:bg-zinc-800 hover:text-slate-200"
+                                        }`}
                                     >
-                                        …
-                                    </span>
+                                        {item.page + 1}
+                                    </button>
                                 );
-                            }
-
-                            const isActive = item.page === reviewsPage.page;
-                            return (
-                                <Button
-                                    key={`page-${item.page}`}
-                                    variant={isActive ? "secondary" : "outline"}
-                                    size="sm"
-                                    onClick={() => setPage(item.page)}
-                                >
-                                    {item.page + 1}
-                                </Button>
-                            );
-                        })}
+                            })}
+                        </div>
 
                         <Button
                             variant="outline"
                             size="sm"
+                            className="h-8 border-zinc-700 bg-transparent text-xs text-slate-300 hover:bg-zinc-800 hover:text-slate-100"
                             disabled={reviewsPage.last}
                             onClick={() => setPage((p) => Math.min(reviewsPage.totalPages - 1, p + 1))}
                         >
-                            Next
+                            Sau
                         </Button>
                     </div>
                 </div>
