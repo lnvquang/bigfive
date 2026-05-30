@@ -21,7 +21,7 @@ public enum ErrorCode {
     TOKEN_INVALID(403,"TOKEN_INVALID","Token không hợp lệ"),
     TOKEN_EXPIRED(403,"TOKEN_EXPIRED","Token hết hạn"),
     TOKEN_NOT_FOUND(404,"TOKEN_NOT_FOUND","Không tìm thấy token"),
-
+    TOKEN_REVOKED(403,"TOKEN_REVOKED","Token đã thu hồi"),
     REVIEW_NOTFOUND(404,"REVIEW_NOTFOUND","KHÔNG TỒN TẠI REVIEW NÀY");
 
     private final int status;

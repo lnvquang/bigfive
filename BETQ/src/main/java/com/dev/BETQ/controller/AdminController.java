@@ -3,7 +3,6 @@ package com.dev.BETQ.controller;
 import com.dev.BETQ.dto.response.*;
 import com.dev.BETQ.service.AdminService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -102,4 +101,23 @@ public class AdminController {
                                 .result(adminService.getAllReviews(page, size))
                                 .build();
         }
+    @PutMapping("/lock")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<Void> lock(@RequestParam Long userId) {
+        adminService.lockUser(userId);
+        return ApiResponse.<Void>builder()
+                .status(200)
+                .message("Đã khóa thành công")
+                .build();
+    }
+
+    @PutMapping("/unlock")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<Void> unlock(@RequestParam Long userId) {
+        adminService.unlockUser(userId);
+        return ApiResponse.<Void>builder()
+                .status(200)
+                .message("Đã kích hoạt thành công")
+                .build();
+    }
 }

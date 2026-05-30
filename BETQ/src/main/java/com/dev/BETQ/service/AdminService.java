@@ -7,6 +7,7 @@ import com.dev.BETQ.exception.AppException;
 import com.dev.BETQ.exception.ErrorCode;
 import com.dev.BETQ.repository.CustomerReviewRepository;
 import com.dev.BETQ.repository.UserRepository;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -55,6 +56,7 @@ public class AdminService {
                                 .email(user.getEmail())
                                 .phone(user.getPhone())
                                 .role(user.getRole())
+                                .status(user.getStatus())
                                 .createdAt(user.getCreatedAt())
                                 .build())
                         .toList();
@@ -202,5 +204,33 @@ public class AdminService {
                 .totalPages(reviewPage.getTotalPages())
                 .last(reviewPage.isLast())
                 .build();
+    }
+    @Transactional
+    public void lockUser(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (!user.getStatus()) {
+            throw new AppException(ErrorCode.USER_ALREADY_LOCKED);
+        }
+
+
+        user.setStatus(false);
+        userRepository.save(user);
+
+    }
+    @Transactional
+    public void unlockUser(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (user.getStatus()) {
+            throw new AppException(ErrorCode.USER_ALREADY_ACTIVE);
+        }
+
+        user.setStatus(true);
+        userRepository.save(user);
+
+
     }
 }

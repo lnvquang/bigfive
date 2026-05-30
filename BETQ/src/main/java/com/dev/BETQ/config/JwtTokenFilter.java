@@ -1,6 +1,9 @@
 package com.dev.BETQ.config;
 
+import com.dev.BETQ.entity.User;
+import com.dev.BETQ.exception.AppException;
 import com.dev.BETQ.exception.ErrorCode;
+import com.dev.BETQ.repository.UserRepository;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.SignedJWT;
 import jakarta.servlet.FilterChain;
@@ -24,6 +27,8 @@ public class JwtTokenFilter extends OncePerRequestFilter {
 
     @Autowired
     private JwtProperties jwtProperties;
+    @Autowired
+    private UserRepository userRepository;
 
 
 
@@ -42,7 +47,7 @@ public class JwtTokenFilter extends OncePerRequestFilter {
 
         String authHeader = request.getHeader("Authorization");
 
-        if (authHeader == null || !authHeader.startsWith("Bearer")) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -74,7 +79,14 @@ public class JwtTokenFilter extends OncePerRequestFilter {
             }
 
             Long userId = Long.parseLong(subject);
-
+            User user=userRepository.findById(userId).orElseThrow(
+                    ()->new AppException(ErrorCode.USER_NOT_FOUND)
+            );
+            if(user.getStatus()==false){
+                SecurityContextHolder.clearContext();
+                handleError(response, ErrorCode.ACCOUNT_LOCKED);
+                return;
+            }
 
 
             String role = jwt.getJWTClaimsSet().getStringClaim("role");
