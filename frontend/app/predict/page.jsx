@@ -15,15 +15,14 @@ export default function PredictPage() {
     const [text, setText] = useState("");
     const [result, setResult] = useState(null);
     const [multitaskResult, setMultitaskResult] = useState(null);
+    const [clusterResult, setClusterResult] = useState(null);
+    const [preprocessedText, setPreprocessedText] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
     function formatScore(value) {
         if (typeof value !== "number") return "-";
-        if (value <= 1) {
-            return `${Math.round(value * 100)}%`;
-        }
-        return value.toFixed(0);
+        return value.toFixed(2);
     }
 
     function getSentimentLabel(sentimentObj) {
@@ -45,10 +44,11 @@ export default function PredictPage() {
         setLoading(true);
         setResult(null);
         setMultitaskResult(null);
+        setClusterResult(null);
+        setPreprocessedText("");
 
         try {
-            // Call personality predict endpoint
-            const response = await fetch(`${BACKEND_URL}/predict`, {
+            const response = await fetch(`${BACKEND_URL}/analyze-review`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -61,32 +61,14 @@ export default function PredictPage() {
             }
 
             const payload = await response.json();
-            // Normalize values to 0-1 for the radar chart (accept either 0-1 or 0-100 inputs)
-            const normalized = {};
-            Object.entries(payload).forEach(([k, v]) => {
-                if (typeof v === "number") {
-                    normalized[k] = v > 1 ? v / 100.0 : v;
-                } else {
-                    normalized[k] = v;
-                }
+            setResult(payload.personality_logits || null);
+            setMultitaskResult(payload.multitask || null);
+            setClusterResult({
+                cluster: payload.cluster,
+                cluster_label: payload.cluster_label,
+                message: payload.message,
             });
-            setResult(normalized);
-
-            // Call multitask predict endpoint
-            const multitaskResponse = await fetch(`${BACKEND_URL}/multitask-predict`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ text }),
-            });
-
-            if (multitaskResponse.ok) {
-                const multitaskPayload = await multitaskResponse.json();
-                setMultitaskResult(multitaskPayload);
-            } else {
-                console.warn("Multitask predict endpoint failed, using defaults");
-            }
+            setPreprocessedText(payload.preprocessed_text || "");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Lỗi không xác định");
         } finally {
@@ -133,6 +115,12 @@ export default function PredictPage() {
                             <div className="flex-1">
                                 {result ? (
                                     <>
+                                        {/* Hiển thị câu test sau tiền xử lý */}
+                                        {preprocessedText && (
+                                            <div className="mb-4 p-3 rounded bg-slate-800 text-slate-200 text-sm border border-slate-600">
+                                                <span className="font-semibold text-blue-400">Sau tiền xử lý:</span> {preprocessedText}
+                                            </div>
+                                        )}
                                         <PersonalityRadar data={result} />
 
                                         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -169,8 +157,13 @@ export default function PredictPage() {
                                     <div className="rounded-lg flex-1">
                                         <ClusterCard
                                             className=""
-                                            cluster="Cluster 1"
-                                            description="This is a sample cluster description."
+                                            cluster={clusterResult?.cluster_label || "Chưa xác định"}
+                                            description={
+                                                clusterResult?.message ||
+                                                (typeof clusterResult?.cluster === "number"
+                                                    ? `Cluster numeric ID: ${clusterResult.cluster}`
+                                                    : "Hãy nhập review để hệ thống suy ra cụm thật.")
+                                            }
                                         />
                                     </div>
                                 </div>
