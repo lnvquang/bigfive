@@ -31,5 +31,8 @@ public class ReviewDetailResponse {
     private Double helpfulnessAdvice;
     private Double helpfulnessTotal;
 
+    private Integer clusterId;
+    private String clusterLabel;
+
     private Date createdAt;
 }

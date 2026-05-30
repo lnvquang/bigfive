@@ -174,6 +174,15 @@ export default function AdminUserDetailPage() {
                                 key={r?.id ?? r?.createdAt ?? r?.reviewText}
                                 className="rounded-lg border border-slate-800 bg-slate-900/40 p-4"
                             >
+                                {(() => {
+                                    const clusterLabel = r?.clusterLabel ?? r?.cluster_label;
+                                    const clusterId = r?.clusterId ?? r?.cluster;
+                                    return (
+                                        <div className="mb-2 text-xs text-slate-400">
+                                            Cụm: {clusterLabel || (clusterId != null ? `Cụm ${clusterId}` : "-")}
+                                        </div>
+                                    );
+                                })()}
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div className="text-sm text-slate-400">
                                         Review #{r?.id} · {formatDateTime(r?.createdAt)} · Positive: {Math.round(normalize01(r?.sentimentPositive) * 100)}%

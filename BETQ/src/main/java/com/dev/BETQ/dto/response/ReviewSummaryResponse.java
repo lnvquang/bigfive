@@ -15,5 +15,7 @@ public class ReviewSummaryResponse {
     private Long id;
     private String reviewText;
     private Double sentimentPositive;
+    private Integer clusterId;
+    private String clusterLabel;
     private Date createdAt;
 }

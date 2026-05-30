@@ -94,6 +94,10 @@ export default function HistoryDetailPage() {
         total: normalize01(detail?.helpfulnessTotal),
     };
 
+    const preprocessedText = detail?.preprocessed_text ?? detail?.preprocessedText;
+    const clusterLabel = detail?.clusterLabel ?? detail?.cluster_label;
+    const clusterId = detail?.clusterId ?? detail?.cluster;
+
     return (
         <div className="flex">
             <Sidebar />
@@ -137,6 +141,18 @@ export default function HistoryDetailPage() {
                             <div className="lg:col-span-2 rounded-xl border border-slate-700 bg-slate-950 p-5">
                                 <div className="text-sm font-semibold text-slate-200">Nội dung review</div>
                                 <div className="mt-3 whitespace-pre-wrap text-slate-100">{detail.reviewText}</div>
+
+                                {preprocessedText ? (
+                                    <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="text-sm font-semibold text-slate-200">Text sau tiền xử lý</div>
+                                            <div className="text-xs text-slate-400">
+                                                Cụm: {clusterLabel || (clusterId != null ? `Cụm ${clusterId}` : "-")}
+                                            </div>
+                                        </div>
+                                        <div className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{preprocessedText}</div>
+                                    </div>
+                                ) : null}
                             </div>
 
                             <div className="rounded-xl border border-slate-700 bg-slate-950 p-5">

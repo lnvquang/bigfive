@@ -12,7 +12,7 @@ import com.dev.BETQ.repository.UserRepository;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.SignedJWT;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Sort;
+
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -32,50 +32,105 @@ public class ReviewService {
     @Autowired
     private JwtProperties jwtProperties;
 
-    public ReviewAnalysisResponse analyzeReview(String token, ReviewRequest request) throws Exception {
+    public ReviewAnalysisResponse analyzeReview(
+            String token,
+            ReviewRequest request
+    ) throws Exception {
 
         if (token == null || token.isBlank()) {
             throw new AppException(ErrorCode.TOKEN_NOT_FOUND);
         }
+
         String jwt = token.substring(7);
+
         SignedJWT signedJWT = SignedJWT.parse(jwt);
+
         if (!signedJWT.verify(new MACVerifier(jwtProperties.getSecret()))) {
             throw new AppException(ErrorCode.TOKEN_INVALID);
         }
+
         Date expire = signedJWT.getJWTClaimsSet().getExpirationTime();
+
         if (expire.before(new Date())) {
             throw new AppException(ErrorCode.TOKEN_EXPIRED);
         }
 
-        Long userId = Long.parseLong(signedJWT.getJWTClaimsSet().getSubject());
-        User user = userRepository.findById(userId).orElseThrow(
-                () -> new AppException(ErrorCode.USER_NOT_FOUND)
-        );
-        PersonalityResponse personality = restTemplate.postForObject(
-                "http://127.0.0.1:8000/predict",
-                request,
-                PersonalityResponse.class
+        Long userId = Long.parseLong(
+                signedJWT.getJWTClaimsSet().getSubject()
         );
 
-        MultitaskResponse multitask = restTemplate.postForObject(
-                "http://127.0.0.1:8000/multitask-predict",
-                request,
-                MultitaskResponse.class
-        );
+        User user = userRepository.findById(userId)
+                .orElseThrow(() ->
+                        new AppException(ErrorCode.USER_NOT_FOUND));
+
+        ReviewAiResponse aiResult =
+                restTemplate.postForObject(
+                        "http://127.0.0.1:8000/analyze-review",
+                        request,
+                        ReviewAiResponse.class
+                );
 
         CustomerReview review = CustomerReview.builder()
                 .reviewText(request.getText())
-                .openness(personality.getOpenness())
-                .conscientiousness(personality.getConscientiousness())
-                .extraversion(personality.getExtraversion())
-                .agreeableness(personality.getAgreeableness())
-                .neuroticism(personality.getNeuroticism())
-                .sentimentNegative(multitask.getSentiment().getNegative())
-                .sentimentNeutral(multitask.getSentiment().getNeutral())
-                .sentimentPositive(multitask.getSentiment().getPositive())
-                .helpfulnessKeyAspects(multitask.getHelpfulness().getKey_aspects())
-                .helpfulnessAdvice(multitask.getHelpfulness().getAdvice())
-                .helpfulnessTotal(multitask.getHelpfulness().getTotal())
+
+                .openness(
+                        aiResult.getPersonality_probs().getOpenness()
+                )
+                .conscientiousness(
+                        aiResult.getPersonality_probs().getConscientiousness()
+                )
+                .extraversion(
+                        aiResult.getPersonality_probs().getExtraversion()
+                )
+                .agreeableness(
+                        aiResult.getPersonality_probs().getAgreeableness()
+                )
+                .neuroticism(
+                        aiResult.getPersonality_probs().getNeuroticism()
+                )
+
+
+                .sentimentNegative(
+                        aiResult.getMultitask()
+                                .getSentiment()
+                                .getNegative()
+                )
+                .sentimentNeutral(
+                        aiResult.getMultitask()
+                                .getSentiment()
+                                .getNeutral()
+                )
+                .sentimentPositive(
+                        aiResult.getMultitask()
+                                .getSentiment()
+                                .getPositive()
+                )
+
+
+                .helpfulnessKeyAspects(
+                        aiResult.getMultitask()
+                                .getHelpfulness()
+                                .getKey_aspects()
+                )
+                .helpfulnessAdvice(
+                        aiResult.getMultitask()
+                                .getHelpfulness()
+                                .getAdvice()
+                )
+                .helpfulnessTotal(
+                        aiResult.getMultitask()
+                                .getHelpfulness()
+                                .getTotal()
+                )
+
+
+                .clusterId(
+                        aiResult.getCluster()
+                )
+                .clusterLabel(
+                        aiResult.getCluster_label()
+                )
+
                 .createdAt(new Date())
                 .user(user)
                 .build();
@@ -84,8 +139,11 @@ public class ReviewService {
 
         return ReviewAnalysisResponse.builder()
                 .reviewId(review.getId())
-                .personality(personality)
-                .multitask(multitask)
+                .personality(aiResult.getPersonality_probs())
+                .multitask(aiResult.getMultitask())
+                .cluster(aiResult.getCluster())
+                .cluster_label(aiResult.getCluster_label())
+                .preprocessed_text(aiResult.getPreprocessed_text())
                 .build();
     }
 

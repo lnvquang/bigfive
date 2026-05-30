@@ -14,6 +14,7 @@ export default function PredictPage() {
     const [text, setText] = useState("");
     const [result, setResult] = useState(null);
     const [multitaskResult, setMultitaskResult] = useState(null);
+    const [analysis, setAnalysis] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -44,11 +45,14 @@ export default function PredictPage() {
         setLoading(true);
         setResult(null);
         setMultitaskResult(null);
+        setAnalysis(null);
 
         try {
             // Single endpoint: /api/reviews/analyze
             // Expected shape (after analyzeReview): { multitask, personality, reviewId }
             const analyzeResult = await analyzeReview(text);
+
+            setAnalysis(analyzeResult || null);
 
             const personality = analyzeResult?.personality;
             const multitask = analyzeResult?.multitask;
@@ -75,6 +79,10 @@ export default function PredictPage() {
         }
     }
 
+    const clusterLabel = analysis?.cluster_label ?? analysis?.clusterLabel;
+    const clusterId = analysis?.cluster ?? analysis?.clusterId;
+    const preprocessedText = analysis?.preprocessed_text ?? analysis?.preprocessedText;
+
     return (
         <div className="flex">
             <Sidebar />
@@ -94,6 +102,15 @@ export default function PredictPage() {
                                 placeholder="Enter customer comment..."
                                 maxLength={3000}
                             />
+
+                            {preprocessedText ? (
+                                <div className="mt-4 rounded-lg border border-slate-700 bg-slate-950 p-4">
+                                    <div className="text-sm font-semibold text-slate-200">Text sau tiền xử lý</div>
+                                    <div className="mt-2 whitespace-pre-wrap text-sm text-slate-300">
+                                        {preprocessedText}
+                                    </div>
+                                </div>
+                            ) : null}
 
                             <button
                                 onClick={handlePredict}
@@ -150,8 +167,8 @@ export default function PredictPage() {
                                     <div className="rounded-lg flex-1">
                                         <ClusterCard
                                             className=""
-                                            cluster="Cluster 1"
-                                            description="This is a sample cluster description."
+                                            cluster={clusterLabel || (clusterId != null ? `Cụm ${clusterId}` : "-")}
+                                            description={clusterLabel ? "" : ""}
                                         />
                                     </div>
                                 </div>

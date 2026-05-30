@@ -158,6 +158,7 @@ export default function AdminReviewsPage() {
                                 <th className="px-5 py-4 font-medium">#ID</th>
                                 <th className="px-5 py-4 font-medium">Người đánh giá</th>
                                 <th className="px-5 py-4 font-medium">Cảm xúc</th>
+                                <th className="px-5 py-4 font-medium">Cụm</th>
                                 <th className="px-5 py-4 font-medium">Thời gian</th>
                                 <th className="px-5 py-4 font-medium w-full max-w-[300px]">Nội dung</th>
                                 <th className="px-5 py-4 font-medium text-right">Thao tác</th>
@@ -166,13 +167,15 @@ export default function AdminReviewsPage() {
                         <tbody className="divide-y divide-zinc-800/80">
                             {reviews.length === 0 && !loading ? (
                                 <tr>
-                                    <td colSpan={6} className="py-10 text-center text-slate-500">
+                                    <td colSpan={7} className="py-10 text-center text-slate-500">
                                         Không có đánh giá nào được tìm thấy.
                                     </td>
                                 </tr>
                             ) : (
                                 reviews.map((r) => {
                                     const sentiment = getSentimentBadge(r.sentimentPositive);
+                                    const clusterLabel = r?.clusterLabel ?? r?.cluster_label;
+                                    const clusterId = r?.clusterId ?? r?.cluster;
                                     return (
                                         <tr key={r.id} className="transition-colors hover:bg-zinc-900/40">
                                             <td className="px-5 py-3 font-medium text-slate-400">{r.id}</td>
@@ -184,6 +187,9 @@ export default function AdminReviewsPage() {
                                                 <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${sentiment.color}`}>
                                                     {sentiment.text}
                                                 </span>
+                                            </td>
+                                            <td className="px-5 py-3 text-slate-300">
+                                                {clusterLabel || (clusterId != null ? `Cụm ${clusterId}` : "-")}
                                             </td>
                                             <td className="px-5 py-3 text-slate-400">
                                                 {formatDateTime(r.createdAt)}

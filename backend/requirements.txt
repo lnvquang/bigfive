@@ -3,3 +3,6 @@ uvicorn
 transformers
 torch
 safetensors
+joblib
+scikit-learn
+pyvi

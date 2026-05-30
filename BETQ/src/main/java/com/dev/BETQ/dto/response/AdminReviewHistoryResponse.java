@@ -17,5 +17,7 @@ public class AdminReviewHistoryResponse {
     private String fullName;
     private String reviewText;
     private Double sentimentPositive;
+    private Integer clusterId;
+    private String clusterLabel;
     private Date createdAt;
 }

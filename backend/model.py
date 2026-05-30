@@ -1,16 +1,93 @@
 import os
+import re
+import unicodedata
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 MODEL_PATH = Path(os.getenv("PERSONALITY_MODEL_PATH", Path(__file__).resolve().parent / "saved_model"))
 MULTITASK_MODEL_PATH = MODEL_PATH / "phobert_multitask_best (2).pt"
+CLUSTER_MODEL_PATH = Path(os.getenv("CLUSTER_MODEL_PATH", MODEL_PATH / "kmeans_model.pkl"))
+CLUSTER_SCALER_PATH = Path(os.getenv("CLUSTER_SCALER_PATH", MODEL_PATH / "scaler.pkl"))
 PHOBERT_NAME = "vinai/phobert-base"
-MAX_LEN = 256
+MAX_LEN = 192
 
 _tokenizer = None
 _model = None
 _multitask_tokenizer = None
 _multitask_model = None
+_cluster_model = None
+_cluster_scaler = None
+
+VIETNAMESE_STOPWORDS = {
+    "và", "của", "là", "những", "các", "cho", "để", "với", "trong", "tại",
+    "như", "nhưng", "vì", "thì", "mà", "hoặc", "nếu", "tuy", "đến", "bằng",
+    "vẫn", "cứ", "chỉ", "lại", "thôi", "từng", "này", "kia", "đó", "đấy",
+    "nào", "ai", "gì", "sao", "ở", "sau", "trước", "khi", "nhà", "người",
+    "chuyện", "việc", "cái", "chiếc", "sự", "nỗi", "niềm", "sức"
+}
+
+TEENCODE_DICT = {
+    "ko": "không", "k": "không", "khg": "không", "khum": "không", "kp": "không phải",
+    "đg": "đang", "dg": "đang", "dc": "được", "đc": "được", "đt": "điện thoại",
+    "j": "gì", "zi": "vậy", "v": "vậy", "vây": "vậy", "ntn": "như thế nào",
+    "ok": "tốt", "oki": "tốt", "oke": "tốt", "gút": "tốt", "good": "tốt",
+    "sad": "buồn", "happy": "vui", "iu": "yêu", "love": "yêu",
+    "tks": "cảm ơn", "thanks": "cảm ơn", "tk": "cảm ơn", "cmon": "cảm ơn", "cmơn": "cảm ơn",
+    "xl": "xin lỗi", "plz": "làm ơn", "please": "làm ơn",
+    "b": "bạn", "bán": "bạn", "bn": "bạn", "c": "chị", "a": "anh", "e": "em",
+    "m": "mình", "t": "tôi", "mn": "mọi người", "ng": "người", "gđ": "gia đình",
+    "nv": "nhân viên", "shop": "cửa hàng", "st": "siêu thị", "kh": "khách hàng",
+    "hnay": "hôm nay", "hqua": "hôm qua", "nt": "nhắn tin", "tl": "trả lời",
+    "ib": "nhắn tin", "inbox": "nhắn tin", "rep": "trả lời", "fb": "facebook",
+    "bit": "biết", "bít": "biết", " bik": "biết", "bh": "bây giờ", "h": "giờ",
+    " bik": "biết", "mún": "muốn", "thik": "thích", "ty": "tình yêu",
+    "chít": "chết", " lém": "lắm", " hỉu": "hiểu", " rùi": "rồi", " r": "rồi",
+    " thui": "thôi", " đc ": " được ", " wa ": " quá ", " quá ": " quá ",
+    " ship ": " giao hàng ", " shipper ": " người giao hàng ", " order ": " đặt hàng "
+}
+
+
+def _replace_teencode(text: str) -> str:
+    words = text.split()
+    return " ".join([TEENCODE_DICT.get(word, word) for word in words])
+
+
+def preprocess_review_text(text: str) -> str:
+    if text is None:
+        return ""
+
+    normalized_text = str(text).strip().lower()
+    if not normalized_text or normalized_text == "nan":
+        return ""
+
+    normalized_text = unicodedata.normalize("NFC", normalized_text)
+    normalized_text = re.sub(r"https?://\S+|www\.\S+", " ", normalized_text)
+    normalized_text = re.sub(r"\S+@\S+", " ", normalized_text)
+    normalized_text = re.sub(r"\b\d{8,}\b", " ", normalized_text)
+    normalized_text = re.sub(r"([a-zàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễđìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹ])\1+", r"\1", normalized_text)
+    normalized_text = re.sub(
+        r"[^a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễđìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹ\s]",
+        " ",
+        normalized_text,
+    )
+    normalized_text = re.sub(r"\s+", " ", normalized_text).strip()
+    normalized_text = _replace_teencode(normalized_text)
+
+    try:
+        from pyvi import ViTokenizer
+        normalized_text = ViTokenizer.tokenize(normalized_text)
+    except Exception:
+        pass
+    print()
+
+    filtered_words = [word for word in normalized_text.split() if word not in VIETNAMESE_STOPWORDS]
+    return " ".join(filtered_words)
+
+CLUSTER_LABELS = {
+    0: "Cụm 0 - Chuyên gia / Đánh giá khách quan",
+    1: "Cụm 1 - Khách hàng tích cực / Dễ tính",
+    2: "Cụm 2 - Khách hàng toxic / Khó tính",
+}
 
 
 def default_personality_scores() -> Dict[str, float]:
@@ -37,6 +114,16 @@ def default_multitask_scores() -> Dict[str, float]:
         }
     }
 
+
+def default_review_analysis() -> Dict:
+    return {
+        "personality": default_personality_scores(),
+        "multitask": default_multitask_scores(),
+        "cluster": None,
+        "cluster_label": None,
+        "cluster_model_ready": False,
+        "message": "Cluster model chưa được cấu hình hoặc chưa có file kmeans_model.pkl.",
+    }
 
 def load_model() -> Tuple[Optional[object], Optional[object]]:
     global _model, _tokenizer
@@ -152,6 +239,33 @@ def load_multitask_model() -> Tuple[Optional[object], Optional[object]]:
         return None, None
 
 
+def load_cluster_model() -> Tuple[Optional[object], Optional[object]]:
+    global _cluster_model, _cluster_scaler
+
+    if _cluster_model is not None:
+        return _cluster_model, _cluster_scaler
+
+    try:
+        import joblib
+    except ImportError:
+        return None, None
+
+    if CLUSTER_MODEL_PATH.exists():
+        try:
+            _cluster_model = joblib.load(CLUSTER_MODEL_PATH)
+        except Exception:
+            print("KMEANS LOAD ERROR:", e)
+            _cluster_model = None
+
+    if CLUSTER_SCALER_PATH.exists():
+        try:
+            _cluster_scaler = joblib.load(CLUSTER_SCALER_PATH)
+        except Exception:
+            _cluster_scaler = None
+
+    return _cluster_model, _cluster_scaler
+
+
 def predict_personality(text: str, return_logits: bool = True) -> Dict[str, float]:
     """Predict personality traits for `text`.
 
@@ -168,8 +282,10 @@ def predict_personality(text: str, return_logits: bool = True) -> Dict[str, floa
     except ImportError:
         return default_personality_scores()
 
+    cleaned_text = str(text or "").strip()
+
     inputs = tokenizer(
-        text,
+        cleaned_text,
         return_tensors="pt",
         truncation=True,
         padding=True,
@@ -222,7 +338,7 @@ def predict_personality(text: str, return_logits: bool = True) -> Dict[str, floa
     return {name: value for name, value in zip(trait_names, scores)}
 
 
-def predict_multitask_scores(text: str) -> Dict:
+def predict_multitask_scores(text: str, round_output: bool = True) -> Dict:
     """Predict sentiment and helpfulness using PhoBERT multitask model."""
     model, tokenizer = load_multitask_model()
     if model is None or tokenizer is None:
@@ -237,9 +353,11 @@ def predict_multitask_scores(text: str) -> Dict:
     try:
         device = model.device
         
-        # Tokenize input
+        # Tokenize raw input to match the Kaggle training/evaluation pipeline.
+        cleaned_text = str(text or "").strip()
+
         inputs = tokenizer(
-            text,
+            cleaned_text,
             return_tensors="pt",
             padding="max_length",
             truncation=True,
@@ -253,34 +371,115 @@ def predict_multitask_scores(text: str) -> Dict:
             help_preds, sent_logits = model.forward(input_ids, attention_mask)
             
             # --- Helpfulness (Regression) ---
-            # Clamp to [0, 1] and extract scores
-            help_preds_01 = torch.clamp(help_preds, 0.0, 1.0).cpu().numpy()[0]
-            final_key_aspects_score = float(help_preds_01[0])
-            final_advice_score = float(help_preds_01[1])
+            # Clamp outputs to [0, 1] range (matching training data range)
+            help_preds_clamped = torch.clamp(help_preds, 0.0, 1.0).cpu().numpy()[0]
+            final_key_aspects_score = float(help_preds_clamped[0])
+            final_advice_score = float(help_preds_clamped[1])
             final_helpfulness_total = (final_key_aspects_score + final_advice_score) / 2.0
             
             # --- Sentiment (Classification) ---
-            # Apply softmax to get probabilities for 3 classes
             probabilities = F.softmax(sent_logits, dim=1)[0].cpu().numpy()
             prob_negative = float(probabilities[0])
             prob_neutral = float(probabilities[1])
             prob_positive = float(probabilities[2])
+            sentiment_index = int(torch.argmax(sent_logits, dim=1)[0].item())
+
+        if round_output:
+            return {
+                "sentiment": {
+                    "negative": round(prob_negative, 2),
+                    "neutral": round(prob_neutral, 2),
+                    "positive": round(prob_positive, 2),
+                },
+                "sentiment_label": int(sentiment_index),
+                "helpfulness": {
+                    "key_aspects": round(final_key_aspects_score, 2),
+                    "advice": round(final_advice_score, 2),
+                    "total": round(final_helpfulness_total, 2),
+                }
+            }
         
         return {
             "sentiment": {
-                "negative": round(prob_negative, 2),
-                "neutral": round(prob_neutral, 2),
-                "positive": round(prob_positive, 2),
+                "negative": prob_negative,
+                "neutral": prob_neutral,
+                "positive": prob_positive,
             },
+            "sentiment_label": int(sentiment_index),
             "helpfulness": {
-                "key_aspects": round(final_key_aspects_score, 2),
-                "advice": round(final_advice_score, 2),
-                "total": round(final_helpfulness_total, 2),
+                "key_aspects": final_key_aspects_score,
+                "advice": final_advice_score,
+                "total": final_helpfulness_total,
             }
         }
     
     except Exception as e:
         return default_multitask_scores()
+
+
+def _build_cluster_features(personality_scores: Dict[str, float], multitask_scores: Dict) -> Dict[str, float]:
+    return {
+        "O": float(personality_scores.get("openness", 0.0)),
+        "C": float(personality_scores.get("conscientiousness", 0.0)),
+        "E": float(personality_scores.get("extraversion", 0.0)),
+        "A": float(personality_scores.get("agreeableness", 0.0)),
+        "N": float(personality_scores.get("neuroticism", 0.0)),
+        "Helpfulness": float(multitask_scores.get("helpfulness", {}).get("total", 0.0)),
+        "Tích_cực": float(multitask_scores.get("sentiment", {}).get("positive", 0.0)),
+        "Tiêu_cực": float(multitask_scores.get("sentiment", {}).get("negative", 0.0)),
+        "Trung_tính": float(multitask_scores.get("sentiment", {}).get("neutral", 0.0)),
+    }
+
+
+def predict_review_analysis(text: str) -> Dict:
+    # Also compute preprocessed text for inspection (does not change inference inputs)
+    preprocessed_text = preprocess_review_text(text)
+
+    personality_logits = predict_personality(text, return_logits=True)
+    personality_scores = predict_personality(text, return_logits=False)
+    multitask_scores = predict_multitask_scores(text, round_output=False)
+    cluster_model, cluster_scaler = load_cluster_model()
+
+    response = {
+        "personality_logits": personality_logits,
+        "personality_probs": personality_scores,
+        "multitask": multitask_scores,
+        "preprocessed_text": preprocessed_text,
+        "cluster": None,
+        "cluster_label": None,
+        "cluster_model_ready": cluster_model is not None,
+        "message": None,
+    }
+
+    if cluster_model is None:
+        response["message"] = "Không tìm thấy file kmeans_model.pkl để gán cluster."
+        return response
+
+    cluster_features = _build_cluster_features(personality_scores, multitask_scores)
+    cluster_vector = [[
+        cluster_features["O"],
+        cluster_features["C"],
+        cluster_features["E"],
+        cluster_features["A"],
+        cluster_features["N"],
+        cluster_features["Helpfulness"],
+        cluster_features["Tích_cực"],
+        cluster_features["Tiêu_cực"],
+        cluster_features["Trung_tính"],
+    ]]
+
+    try:
+        if cluster_scaler is not None:
+            cluster_vector = cluster_scaler.transform(cluster_vector)
+
+        cluster_id = int(cluster_model.predict(cluster_vector)[0])
+        response["cluster"] = cluster_id
+        response["cluster_label"] = CLUSTER_LABELS.get(cluster_id, f"Cụm {cluster_id}")
+    except Exception:
+        response["cluster_model_ready"] = False
+        response["message"] = "Không thể suy ra cluster từ model KMeans đã tải."
+
+    return response
 
 
 def check_tokenizers(verbose: bool = True) -> Dict[str, Dict]:

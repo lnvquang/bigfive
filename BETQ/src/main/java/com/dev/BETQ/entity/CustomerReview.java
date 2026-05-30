@@ -35,6 +35,8 @@ public class CustomerReview {
     private Double helpfulnessKeyAspects;
     private Double helpfulnessAdvice;
     private Double helpfulnessTotal;
+    private Integer clusterId;
+    private String clusterLabel;
     private Date createdAt;
     @ManyToOne
     @JoinColumn(name = "user_id")

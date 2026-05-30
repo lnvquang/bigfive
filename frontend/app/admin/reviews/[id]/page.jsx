@@ -76,6 +76,10 @@ export default function AdminReviewDetailPage() {
     const negative = normalize01(review?.sentimentNegative);
     const neutral = normalize01(review?.sentimentNeutral);
 
+    const clusterLabel = review?.clusterLabel ?? review?.cluster_label;
+    const clusterId = review?.clusterId ?? review?.cluster;
+    const preprocessedText = review?.preprocessed_text ?? review?.preprocessedText;
+
     return (
         <div className="space-y-6">
             <div className="flex flex-wrap items-end justify-between gap-3">
@@ -116,12 +120,24 @@ export default function AdminReviewDetailPage() {
                             {formatDateTime(review.createdAt)}
                         </div>
                     </div>
-                    <div className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-sm text-slate-200">
-                        Helpfulness: {Math.round(normalize01(review.helpfulnessTotal) * 100)}%
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-sm text-slate-200">
+                            Cụm: {clusterLabel || (clusterId != null ? `Cụm ${clusterId}` : "-")}
+                        </div>
+                        <div className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-sm text-slate-200">
+                            Helpfulness: {Math.round(normalize01(review.helpfulnessTotal) * 100)}%
+                        </div>
                     </div>
                 </div>
 
                 <div className="mt-4 whitespace-pre-wrap text-slate-100">{review.reviewText}</div>
+
+                {preprocessedText ? (
+                    <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+                        <div className="text-sm font-semibold text-slate-200">Text sau tiền xử lý</div>
+                        <div className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{preprocessedText}</div>
+                    </div>
+                ) : null}
 
                 <div className="mt-6 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
                     <div className="text-sm font-semibold text-slate-200">Sentiment</div>
