@@ -39,7 +39,7 @@ async function clientLogout() {
                     "Content-Type": "application/json",
                     ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 },
-                timeout: 10000,
+                timeout: 1000000,
             }
         );
     } catch {
@@ -59,7 +59,7 @@ const api = axios.create({
     headers: {
         "Content-Type": "application/json",
     },
-    timeout: 10000,
+    timeout: 1000000,
 });
 
 async function refreshAccessToken() {
