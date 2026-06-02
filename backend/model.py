@@ -4,9 +4,11 @@ import unicodedata
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+import numpy as np
+
 MODEL_PATH = Path(os.getenv("PERSONALITY_MODEL_PATH", Path(__file__).resolve().parent / "saved_model"))
 MULTITASK_MODEL_PATH = MODEL_PATH / "phobert_multitask_best (2).pt"
-CLUSTER_MODEL_PATH = Path(os.getenv("CLUSTER_MODEL_PATH", MODEL_PATH / "kmeans_model.pkl"))
+CLUSTER_MODEL_PATH = Path(os.getenv("CLUSTER_MODEL_PATH", MODEL_PATH / "hierarchical_cluster_model_core.pkl"))
 CLUSTER_SCALER_PATH = Path(os.getenv("CLUSTER_SCALER_PATH", MODEL_PATH / "scaler.pkl"))
 PHOBERT_NAME = "vinai/phobert-base"
 MAX_LEN = 192
@@ -84,9 +86,9 @@ def preprocess_review_text(text: str) -> str:
     return " ".join(filtered_words)
 
 CLUSTER_LABELS = {
-    0: "Cụm 0 - Chuyên gia / Đánh giá khách quan",
-    1: "Cụm 1 - Khách hàng tích cực / Dễ tính",
-    2: "Cụm 2 - Khách hàng toxic / Khó tính",
+    0: "Nhóm 1: Chuyên gia đánh giá",
+    1: "Nhóm 3: Người qua đường dễ dãi",
+    2: "Nhóm 2: Toxic / Khó tính",
 }
 
 
@@ -122,7 +124,7 @@ def default_review_analysis() -> Dict:
         "cluster": None,
         "cluster_label": None,
         "cluster_model_ready": False,
-        "message": "Cluster model chưa được cấu hình hoặc chưa có file kmeans_model.pkl.",
+        "message": "Cluster model chưa được cấu hình hoặc chưa có file hierarchical_cluster_model_core.pkl.",
     }
 
 def load_model() -> Tuple[Optional[object], Optional[object]]:
@@ -239,31 +241,154 @@ def load_multitask_model() -> Tuple[Optional[object], Optional[object]]:
         return None, None
 
 
-def load_cluster_model() -> Tuple[Optional[object], Optional[object]]:
+def load_cluster_model() -> Dict[str, object]:
     global _cluster_model, _cluster_scaler
 
-    if _cluster_model is not None:
-        return _cluster_model, _cluster_scaler
+    if isinstance(_cluster_model, dict) and "ready" in _cluster_model:
+        return _cluster_model
 
     try:
         import joblib
     except ImportError:
+        return {
+            "ready": False,
+            "mode": "unavailable",
+            "message": "joblib is not installed.",
+            "source_path": None,
+            "stage1_model": None,
+            "stage1_scaler": None,
+            "stage2_model": None,
+            "stage2_scaler": None,
+            "toxic_cluster_id": None,
+            "casual_cluster_id": None,
+            "expert_cluster_id": None,
+        }
+
+    candidate_paths = []
+    if os.getenv("CLUSTER_MODEL_PATH"):
+        candidate_paths.append(CLUSTER_MODEL_PATH)
+    else:
+        candidate_paths.extend([
+            MODEL_PATH / "hierarchical_cluster_model_core.pkl",
+            MODEL_PATH / "kmeans_model.pkl",
+        ])
+
+    loaded_bundle = None
+    for model_path in candidate_paths:
+        if not Path(model_path).exists():
+            continue
+
+        try:
+            loaded = joblib.load(model_path)
+        except Exception as e:
+            print("CLUSTER LOAD ERROR:", e)
+            continue
+
+        if isinstance(loaded, dict) and {"kmeans1", "scaler1", "kmeans2", "scaler2"}.issubset(loaded.keys()):
+            loaded_bundle = {
+                "ready": True,
+                "mode": "hierarchical",
+                "source_path": str(model_path),
+                "stage1_model": loaded.get("kmeans1"),
+                "stage1_scaler": loaded.get("scaler1"),
+                "stage2_model": loaded.get("kmeans2"),
+                "stage2_scaler": loaded.get("scaler2"),
+                "toxic_cluster_id": loaded.get("toxic_cluster_id"),
+                "casual_cluster_id": loaded.get("casual_cluster_id"),
+                "expert_cluster_id": loaded.get("expert_cluster_id"),
+            }
+            break
+
+        if hasattr(loaded, "predict"):
+            scaler = None
+            if CLUSTER_SCALER_PATH.exists():
+                try:
+                    scaler = joblib.load(CLUSTER_SCALER_PATH)
+                except Exception:
+                    scaler = None
+
+            loaded_bundle = {
+                "ready": True,
+                "mode": "single",
+                "source_path": str(model_path),
+                "stage1_model": loaded,
+                "stage1_scaler": scaler,
+                "stage2_model": None,
+                "stage2_scaler": None,
+                "toxic_cluster_id": None,
+                "casual_cluster_id": None,
+                "expert_cluster_id": None,
+            }
+            break
+
+    if loaded_bundle is None:
+        loaded_bundle = {
+            "ready": False,
+            "mode": "missing",
+            "source_path": None,
+            "stage1_model": None,
+            "stage1_scaler": None,
+            "stage2_model": None,
+            "stage2_scaler": None,
+            "toxic_cluster_id": None,
+            "casual_cluster_id": None,
+            "expert_cluster_id": None,
+            "message": "Không tìm thấy file hierarchical_cluster_model_core.pkl hoặc kmeans_model.pkl để gán cluster.",
+        }
+
+    _cluster_model = loaded_bundle
+    _cluster_scaler = loaded_bundle.get("stage1_scaler")
+    return loaded_bundle
+
+
+def _predict_hierarchical_cluster(cluster_bundle: Dict[str, object], personality_scores: Dict[str, float], multitask_scores: Dict) -> Tuple[Optional[int], Optional[str]]:
+    stage1_model = cluster_bundle.get("stage1_model")
+    stage1_scaler = cluster_bundle.get("stage1_scaler")
+    stage2_model = cluster_bundle.get("stage2_model")
+    stage2_scaler = cluster_bundle.get("stage2_scaler")
+
+    if stage1_model is None:
         return None, None
 
-    if CLUSTER_MODEL_PATH.exists():
-        try:
-            _cluster_model = joblib.load(CLUSTER_MODEL_PATH)
-        except Exception:
-            print("KMEANS LOAD ERROR:", e)
-            _cluster_model = None
+    sentiment = multitask_scores.get("sentiment", {})
+    stage1_vector = np.array([[
+        float(sentiment.get("negative", 0.0)),
+        float(sentiment.get("neutral", 0.0)),
+        float(sentiment.get("positive", 0.0)),
+    ]], dtype=float)
 
-    if CLUSTER_SCALER_PATH.exists():
-        try:
-            _cluster_scaler = joblib.load(CLUSTER_SCALER_PATH)
-        except Exception:
-            _cluster_scaler = None
+    if stage1_scaler is not None:
+        stage1_vector = stage1_scaler.transform(stage1_vector)
 
-    return _cluster_model, _cluster_scaler
+    stage1_cluster_id = int(stage1_model.predict(stage1_vector)[0])
+    toxic_cluster_id = cluster_bundle.get("toxic_cluster_id")
+
+    if toxic_cluster_id is not None and stage1_cluster_id == int(toxic_cluster_id):
+        return 2, CLUSTER_LABELS[2]
+
+    if stage2_model is None:
+        return None, None
+
+    stage2_vector = np.array([[
+        float(personality_scores.get("openness", 0.0)),
+        float(personality_scores.get("conscientiousness", 0.0)),
+        float(personality_scores.get("extraversion", 0.0)),
+        float(personality_scores.get("agreeableness", 0.0)),
+        float(personality_scores.get("neuroticism", 0.0)),
+        float(multitask_scores.get("helpfulness", {}).get("total", 0.0)),
+        float(sentiment.get("positive", 0.0)),
+    ]], dtype=float)
+
+    if stage2_scaler is not None:
+        stage2_vector = stage2_scaler.transform(stage2_vector)
+
+    stage2_cluster_id = int(stage2_model.predict(stage2_vector)[0])
+    casual_cluster_id = cluster_bundle.get("casual_cluster_id")
+
+    if casual_cluster_id is not None and stage2_cluster_id == int(casual_cluster_id):
+        return 1, CLUSTER_LABELS[1]
+
+    return 0, CLUSTER_LABELS[0]
 
 
 def predict_personality(text: str, return_logits: bool = True) -> Dict[str, float]:
@@ -438,7 +563,7 @@ def predict_review_analysis(text: str) -> Dict:
     personality_logits = predict_personality(text, return_logits=True)
     personality_scores = predict_personality(text, return_logits=False)
     multitask_scores = predict_multitask_scores(text, round_output=False)
-    cluster_model, cluster_scaler = load_cluster_model()
+    cluster_bundle = load_cluster_model()
 
     response = {
         "personality_logits": personality_logits,
@@ -447,37 +572,25 @@ def predict_review_analysis(text: str) -> Dict:
         "preprocessed_text": preprocessed_text,
         "cluster": None,
         "cluster_label": None,
-        "cluster_model_ready": cluster_model is not None,
+        "cluster_model_ready": bool(cluster_bundle.get("ready")),
         "message": None,
     }
 
-    if cluster_model is None:
-        response["message"] = "Không tìm thấy file kmeans_model.pkl để gán cluster."
+    if not cluster_bundle.get("ready"):
+        response["message"] = cluster_bundle.get("message") or "Không tìm thấy file hierarchical_cluster_model_core.pkl để gán cluster."
         return response
 
-    cluster_features = _build_cluster_features(personality_scores, multitask_scores)
-    cluster_vector = [[
-        cluster_features["O"],
-        cluster_features["C"],
-        cluster_features["E"],
-        cluster_features["A"],
-        cluster_features["N"],
-        cluster_features["Helpfulness"],
-        cluster_features["Tích_cực"],
-        cluster_features["Tiêu_cực"],
-        cluster_features["Trung_tính"],
-    ]]
-
     try:
-        if cluster_scaler is not None:
-            cluster_vector = cluster_scaler.transform(cluster_vector)
+        cluster_id, cluster_label = _predict_hierarchical_cluster(cluster_bundle, personality_scores, multitask_scores)
+        if cluster_id is None:
+            response["message"] = "Không thể suy ra cluster từ model phân cụm đã tải."
+            return response
 
-        cluster_id = int(cluster_model.predict(cluster_vector)[0])
         response["cluster"] = cluster_id
-        response["cluster_label"] = CLUSTER_LABELS.get(cluster_id, f"Cụm {cluster_id}")
-    except Exception:
+        response["cluster_label"] = cluster_label or CLUSTER_LABELS.get(cluster_id, f"Cụm {cluster_id}")
+    except Exception as e:
         response["cluster_model_ready"] = False
-        response["message"] = "Không thể suy ra cluster từ model KMeans đã tải."
+        response["message"] = f"Không thể suy ra cluster từ model phân cụm đã tải: {e}"
 
     return response
 
