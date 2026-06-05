@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import unicodedata
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -8,7 +9,7 @@ import numpy as np
 
 MODEL_PATH = Path(os.getenv("PERSONALITY_MODEL_PATH", Path(__file__).resolve().parent / "saved_model"))
 MULTITASK_MODEL_PATH = MODEL_PATH / "phobert_multitask_best (2).pt"
-CLUSTER_MODEL_PATH = Path(os.getenv("CLUSTER_MODEL_PATH", MODEL_PATH / "hierarchical_cluster_model_core.pkl"))
+CLUSTER_MODEL_PATH = Path(os.getenv("CLUSTER_MODEL_PATH", MODEL_PATH / "hierarchical_clustering_model.pkl"))
 CLUSTER_SCALER_PATH = Path(os.getenv("CLUSTER_SCALER_PATH", MODEL_PATH / "scaler.pkl"))
 PHOBERT_NAME = "vinai/phobert-base"
 MAX_LEN = 192
@@ -19,6 +20,14 @@ _multitask_tokenizer = None
 _multitask_model = None
 _cluster_model = None
 _cluster_scaler = None
+
+
+def _cluster_bundle_is_complete(bundle: Optional[Dict[str, object]]) -> bool:
+    if not isinstance(bundle, dict):
+        return False
+    if bundle.get("mode") == "threshold_single":
+        return all(bundle.get(key) is not None for key in ("stage2_model", "stage2_scaler"))
+    return all(bundle.get(key) is not None for key in ("stage1_model", "stage1_scaler", "stage2_model", "stage2_scaler"))
 
 VIETNAMESE_STOPWORDS = {
     "và", "của", "là", "những", "các", "cho", "để", "với", "trong", "tại",
@@ -85,10 +94,45 @@ def preprocess_review_text(text: str) -> str:
     filtered_words = [word for word in normalized_text.split() if word not in VIETNAMESE_STOPWORDS]
     return " ".join(filtered_words)
 
+
+class HierarchicalClusteringModel:
+    def __init__(self):
+        self.scaler1 = None
+        self.kmeans1 = None
+        self.scaler2 = None
+        self.kmeans2 = None
+        self.expert_cluster_id = None
+        self.non_expert_cluster_id = None
+        self.toxic_cluster_id = None
+        self.casual_cluster_id = None
+
+    def predict(self, ocean, helpfulness, sentiment_probs):
+        p_tieucuc, p_tichcuc = sentiment_probs[0], sentiment_probs[2]
+        conscientiousness = ocean[1]
+
+        f_s1 = np.array([[helpfulness, conscientiousness]])
+        f_s1_scaled = self.scaler1.transform(f_s1)
+        pred_s1 = self.kmeans1.predict(f_s1_scaled)[0]
+
+        if pred_s1 == self.expert_cluster_id:
+            return "Nhóm 1: Chuyên gia đánh giá"
+
+        neuroticism = ocean[4]
+        f_s2 = np.array([[p_tieucuc, p_tichcuc, neuroticism]])
+        f_s2_scaled = self.scaler2.transform(f_s2)
+        pred_s2 = self.kmeans2.predict(f_s2_scaled)[0]
+
+        if pred_s2 == self.toxic_cluster_id:
+            return "Nhóm 2: Toxic / Khó tính"
+        return "Nhóm 3: Người qua đường dễ dãi"
+
+
+sys.modules.get("__main__", None) and setattr(sys.modules["__main__"], "HierarchicalClusteringModel", HierarchicalClusteringModel)
+
 CLUSTER_LABELS = {
-    0: "Nhóm 1: Chuyên gia đánh giá",
-    1: "Nhóm 3: Người qua đường dễ dãi",
-    2: "Nhóm 2: Toxic / Khó tính",
+    0: "Cụm 0: Chuyên gia đánh giá",
+    1: "Cụm 1: Khách hàng có tiêu chuẩn cao",
+    2: "Cụm 2: Khách hàng có tâm lý thoải mái",
 }
 
 
@@ -244,8 +288,11 @@ def load_multitask_model() -> Tuple[Optional[object], Optional[object]]:
 def load_cluster_model() -> Dict[str, object]:
     global _cluster_model, _cluster_scaler
 
-    if isinstance(_cluster_model, dict) and "ready" in _cluster_model:
+    if _cluster_bundle_is_complete(_cluster_model):
         return _cluster_model
+
+    _cluster_model = None
+    _cluster_scaler = None
 
     try:
         import joblib
@@ -269,6 +316,7 @@ def load_cluster_model() -> Dict[str, object]:
         candidate_paths.append(CLUSTER_MODEL_PATH)
     else:
         candidate_paths.extend([
+            MODEL_PATH / "hierarchical_clustering_model.pkl",
             MODEL_PATH / "hierarchical_cluster_model_core.pkl",
             MODEL_PATH / "kmeans_model.pkl",
         ])
@@ -284,6 +332,61 @@ def load_cluster_model() -> Dict[str, object]:
             print("CLUSTER LOAD ERROR:", e)
             continue
 
+        if hasattr(loaded, "scaler1") and hasattr(loaded, "kmeans1"):
+            has_stage1 = getattr(loaded, "scaler1", None) is not None and getattr(loaded, "kmeans1", None) is not None
+            has_stage2 = getattr(loaded, "scaler2", None) is not None and getattr(loaded, "kmeans2", None) is not None
+            if has_stage1 and has_stage2:
+                loaded_bundle = {
+                    "ready": True,
+                    "mode": "kaggle_object",
+                    "source_path": str(model_path),
+                    "stage1_model": loaded.kmeans1,
+                    "stage1_scaler": loaded.scaler1,
+                    "stage2_model": loaded.kmeans2,
+                    "stage2_scaler": loaded.scaler2,
+                    "toxic_cluster_id": getattr(loaded, "toxic_cluster_id", None),
+                    "casual_cluster_id": getattr(loaded, "casual_cluster_id", None),
+                    "expert_cluster_id": getattr(loaded, "expert_cluster_id", None),
+                    "raw_bundle": loaded,
+                }
+                break
+
+            loaded_bundle = {
+                "ready": False,
+                "mode": "incomplete_object",
+                "source_path": str(model_path),
+                "stage1_model": loaded.kmeans1 if getattr(loaded, "kmeans1", None) is not None else None,
+                "stage1_scaler": loaded.scaler1 if getattr(loaded, "scaler1", None) is not None else None,
+                "stage2_model": loaded.kmeans2 if getattr(loaded, "kmeans2", None) is not None else None,
+                "stage2_scaler": loaded.scaler2 if getattr(loaded, "scaler2", None) is not None else None,
+                "toxic_cluster_id": getattr(loaded, "toxic_cluster_id", None),
+                "casual_cluster_id": getattr(loaded, "casual_cluster_id", None),
+                "expert_cluster_id": getattr(loaded, "expert_cluster_id", None),
+                "raw_bundle": loaded,
+                "message": f"File {Path(model_path).name} đã load được nhưng thiếu scaler1/kmeans1/scaler2/kmeans2. Hãy export lại từ Kaggle sau khi gán đủ thuộc tính trước joblib.dump().",
+            }
+            break
+
+        if hasattr(loaded, "scaler2") and hasattr(loaded, "kmeans2") and hasattr(loaded, "helpfulness_threshold") and hasattr(loaded, "c_threshold"):
+            has_stage2 = getattr(loaded, "scaler2", None) is not None and getattr(loaded, "kmeans2", None) is not None
+            if has_stage2:
+                loaded_bundle = {
+                    "ready": True,
+                    "mode": "threshold_single",
+                    "source_path": str(model_path),
+                    "stage1_model": None,
+                    "stage1_scaler": None,
+                    "stage2_model": loaded.kmeans2,
+                    "stage2_scaler": loaded.scaler2,
+                    "toxic_cluster_id": getattr(loaded, "toxic_cluster_id", None),
+                    "casual_cluster_id": getattr(loaded, "casual_cluster_id", None),
+                    "expert_cluster_id": None,
+                    "helpfulness_threshold": getattr(loaded, "helpfulness_threshold", 0.0),
+                    "c_threshold": getattr(loaded, "c_threshold", 0.0),
+                    "raw_bundle": loaded,
+                }
+                break
+
         if isinstance(loaded, dict) and {"kmeans1", "scaler1", "kmeans2", "scaler2"}.issubset(loaded.keys()):
             loaded_bundle = {
                 "ready": True,
@@ -296,28 +399,7 @@ def load_cluster_model() -> Dict[str, object]:
                 "toxic_cluster_id": loaded.get("toxic_cluster_id"),
                 "casual_cluster_id": loaded.get("casual_cluster_id"),
                 "expert_cluster_id": loaded.get("expert_cluster_id"),
-            }
-            break
-
-        if hasattr(loaded, "predict"):
-            scaler = None
-            if CLUSTER_SCALER_PATH.exists():
-                try:
-                    scaler = joblib.load(CLUSTER_SCALER_PATH)
-                except Exception:
-                    scaler = None
-
-            loaded_bundle = {
-                "ready": True,
-                "mode": "single",
-                "source_path": str(model_path),
-                "stage1_model": loaded,
-                "stage1_scaler": scaler,
-                "stage2_model": None,
-                "stage2_scaler": None,
-                "toxic_cluster_id": None,
-                "casual_cluster_id": None,
-                "expert_cluster_id": None,
+                "raw_bundle": loaded,
             }
             break
 
@@ -333,7 +415,10 @@ def load_cluster_model() -> Dict[str, object]:
             "toxic_cluster_id": None,
             "casual_cluster_id": None,
             "expert_cluster_id": None,
-            "message": "Không tìm thấy file hierarchical_cluster_model_core.pkl hoặc kmeans_model.pkl để gán cluster.",
+            "helpfulness_threshold": None,
+            "c_threshold": None,
+            "raw_bundle": None,
+            "message": "Không tìm thấy file hierarchical_clustering_model.pkl, hierarchical_cluster_model_core.pkl hoặc kmeans_model.pkl để gán cluster.",
         }
 
     _cluster_model = loaded_bundle
@@ -342,53 +427,69 @@ def load_cluster_model() -> Dict[str, object]:
 
 
 def _predict_hierarchical_cluster(cluster_bundle: Dict[str, object], personality_scores: Dict[str, float], multitask_scores: Dict) -> Tuple[Optional[int], Optional[str]]:
-    stage1_model = cluster_bundle.get("stage1_model")
-    stage1_scaler = cluster_bundle.get("stage1_scaler")
-    stage2_model = cluster_bundle.get("stage2_model")
-    stage2_scaler = cluster_bundle.get("stage2_scaler")
+    raw_bundle = cluster_bundle.get("raw_bundle")
+    if raw_bundle is not None and hasattr(raw_bundle, "scaler1") and hasattr(raw_bundle, "kmeans1"):
+        stage1_model = raw_bundle.kmeans1
+        stage1_scaler = raw_bundle.scaler1
+        stage2_model = raw_bundle.kmeans2
+        stage2_scaler = raw_bundle.scaler2
+        expert_cluster_id = getattr(raw_bundle, "expert_cluster_id", None)
+        toxic_cluster_id = getattr(raw_bundle, "toxic_cluster_id", None)
+        casual_cluster_id = getattr(raw_bundle, "casual_cluster_id", None)
+    elif raw_bundle is not None and hasattr(raw_bundle, "scaler2") and hasattr(raw_bundle, "kmeans2") and hasattr(raw_bundle, "helpfulness_threshold"):
+        stage1_model = None
+        stage1_scaler = None
+        stage2_model = raw_bundle.kmeans2
+        stage2_scaler = raw_bundle.scaler2
+        expert_cluster_id = None
+        toxic_cluster_id = getattr(raw_bundle, "toxic_cluster_id", None)
+        casual_cluster_id = getattr(raw_bundle, "casual_cluster_id", None)
+        helpfulness_threshold = float(getattr(raw_bundle, "helpfulness_threshold", 0.0))
+        c_threshold = float(getattr(raw_bundle, "c_threshold", 0.0))
+    else:
+        stage1_model = cluster_bundle.get("stage1_model")
+        stage1_scaler = cluster_bundle.get("stage1_scaler")
+        stage2_model = cluster_bundle.get("stage2_model")
+        stage2_scaler = cluster_bundle.get("stage2_scaler")
+        expert_cluster_id = cluster_bundle.get("expert_cluster_id")
+        toxic_cluster_id = cluster_bundle.get("toxic_cluster_id")
+        casual_cluster_id = cluster_bundle.get("casual_cluster_id")
+        helpfulness_threshold = float(cluster_bundle.get("helpfulness_threshold") or 0.0)
+        c_threshold = float(cluster_bundle.get("c_threshold") or 0.0)
 
-    if stage1_model is None:
+    if stage2_model is None or stage2_scaler is None:
         return None, None
 
     sentiment = multitask_scores.get("sentiment", {})
-    stage1_vector = np.array([[
-        float(sentiment.get("negative", 0.0)),
-        float(sentiment.get("neutral", 0.0)),
-        float(sentiment.get("positive", 0.0)),
-    ]], dtype=float)
+    helpfulness = float(multitask_scores.get("helpfulness", {}).get("total", 0.0))
+    conscientiousness = float(personality_scores.get("conscientiousness", 0.0))
+    neuroticism = float(personality_scores.get("neuroticism", 0.0))
 
-    if stage1_scaler is not None:
+    if stage1_model is not None and stage1_scaler is not None:
+        stage1_vector = np.array([[helpfulness, conscientiousness]], dtype=float)
         stage1_vector = stage1_scaler.transform(stage1_vector)
+        stage1_cluster_id = int(stage1_model.predict(stage1_vector)[0])
 
-    stage1_cluster_id = int(stage1_model.predict(stage1_vector)[0])
-    toxic_cluster_id = cluster_bundle.get("toxic_cluster_id")
-
-    if toxic_cluster_id is not None and stage1_cluster_id == int(toxic_cluster_id):
-        return 2, CLUSTER_LABELS[2]
-
-    if stage2_model is None:
-        return None, None
+        if expert_cluster_id is not None and stage1_cluster_id == int(expert_cluster_id):
+            return 0, CLUSTER_LABELS[0]
+    else:
+        if helpfulness >= helpfulness_threshold and conscientiousness >= c_threshold:
+            return 0, CLUSTER_LABELS[0]
 
     stage2_vector = np.array([[
-        float(personality_scores.get("openness", 0.0)),
-        float(personality_scores.get("conscientiousness", 0.0)),
-        float(personality_scores.get("extraversion", 0.0)),
-        float(personality_scores.get("agreeableness", 0.0)),
-        float(personality_scores.get("neuroticism", 0.0)),
-        float(multitask_scores.get("helpfulness", {}).get("total", 0.0)),
+        float(sentiment.get("negative", 0.0)),
         float(sentiment.get("positive", 0.0)),
     ]], dtype=float)
-
-    if stage2_scaler is not None:
-        stage2_vector = stage2_scaler.transform(stage2_vector)
-
+    stage2_vector = stage2_scaler.transform(stage2_vector)
     stage2_cluster_id = int(stage2_model.predict(stage2_vector)[0])
-    casual_cluster_id = cluster_bundle.get("casual_cluster_id")
+
+    if toxic_cluster_id is not None and stage2_cluster_id == int(toxic_cluster_id):
+        return 2, CLUSTER_LABELS[2]
 
     if casual_cluster_id is not None and stage2_cluster_id == int(casual_cluster_id):
         return 1, CLUSTER_LABELS[1]
 
-    return 0, CLUSTER_LABELS[0]
+    return 1, CLUSTER_LABELS[1]
 
 
 def predict_personality(text: str, return_logits: bool = True) -> Dict[str, float]:
@@ -583,7 +684,14 @@ def predict_review_analysis(text: str) -> Dict:
     try:
         cluster_id, cluster_label = _predict_hierarchical_cluster(cluster_bundle, personality_scores, multitask_scores)
         if cluster_id is None:
-            response["message"] = "Không thể suy ra cluster từ model phân cụm đã tải."
+            response["message"] = (
+                "Không thể suy ra cluster từ model phân cụm đã tải. "
+                f"mode={cluster_bundle.get('mode')}, "
+                f"stage1_model={cluster_bundle.get('stage1_model') is not None}, "
+                f"stage1_scaler={cluster_bundle.get('stage1_scaler') is not None}, "
+                f"stage2_model={cluster_bundle.get('stage2_model') is not None}, "
+                f"stage2_scaler={cluster_bundle.get('stage2_scaler') is not None}"
+            )
             return response
 
         response["cluster"] = cluster_id
