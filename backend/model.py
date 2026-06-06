@@ -4,13 +4,16 @@ import sys
 import unicodedata
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-
+import html
 import numpy as np
 
-MODEL_PATH = Path(os.getenv("PERSONALITY_MODEL_PATH", Path(__file__).resolve().parent / "saved_model"))
+MODEL_PATH = Path(os.getenv("PERSONALITY_MODEL_PATH", Path(
+    __file__).resolve().parent / "saved_model"))
 MULTITASK_MODEL_PATH = MODEL_PATH / "phobert_multitask_best (2).pt"
-CLUSTER_MODEL_PATH = Path(os.getenv("CLUSTER_MODEL_PATH", MODEL_PATH / "hierarchical_clustering_model.pkl"))
-CLUSTER_SCALER_PATH = Path(os.getenv("CLUSTER_SCALER_PATH", MODEL_PATH / "scaler.pkl"))
+CLUSTER_MODEL_PATH = Path(os.getenv(
+    "CLUSTER_MODEL_PATH", MODEL_PATH / "hierarchical_clustering_model.pkl"))
+CLUSTER_SCALER_PATH = Path(
+    os.getenv("CLUSTER_SCALER_PATH", MODEL_PATH / "scaler.pkl"))
 PHOBERT_NAME = "vinai/phobert-base"
 MAX_LEN = 192
 
@@ -29,6 +32,7 @@ def _cluster_bundle_is_complete(bundle: Optional[Dict[str, object]]) -> bool:
         return all(bundle.get(key) is not None for key in ("stage2_model", "stage2_scaler"))
     return all(bundle.get(key) is not None for key in ("stage1_model", "stage1_scaler", "stage2_model", "stage2_scaler"))
 
+
 VIETNAMESE_STOPWORDS = {
     "và", "của", "là", "những", "các", "cho", "để", "với", "trong", "tại",
     "như", "nhưng", "vì", "thì", "mà", "hoặc", "nếu", "tuy", "đến", "bằng",
@@ -38,61 +42,206 @@ VIETNAMESE_STOPWORDS = {
 }
 
 TEENCODE_DICT = {
-    "ko": "không", "k": "không", "khg": "không", "khum": "không", "kp": "không phải",
-    "đg": "đang", "dg": "đang", "dc": "được", "đc": "được", "đt": "điện thoại",
-    "j": "gì", "zi": "vậy", "v": "vậy", "vây": "vậy", "ntn": "như thế nào",
-    "ok": "tốt", "oki": "tốt", "oke": "tốt", "gút": "tốt", "good": "tốt",
-    "sad": "buồn", "happy": "vui", "iu": "yêu", "love": "yêu",
-    "tks": "cảm ơn", "thanks": "cảm ơn", "tk": "cảm ơn", "cmon": "cảm ơn", "cmơn": "cảm ơn",
-    "xl": "xin lỗi", "plz": "làm ơn", "please": "làm ơn",
-    "b": "bạn", "bán": "bạn", "bn": "bạn", "c": "chị", "a": "anh", "e": "em",
-    "m": "mình", "t": "tôi", "mn": "mọi người", "ng": "người", "gđ": "gia đình",
-    "nv": "nhân viên", "shop": "cửa hàng", "st": "siêu thị", "kh": "khách hàng",
-    "hnay": "hôm nay", "hqua": "hôm qua", "nt": "nhắn tin", "tl": "trả lời",
-    "ib": "nhắn tin", "inbox": "nhắn tin", "rep": "trả lời", "fb": "facebook",
-    "bit": "biết", "bít": "biết", " bik": "biết", "bh": "bây giờ", "h": "giờ",
-    " bik": "biết", "mún": "muốn", "thik": "thích", "ty": "tình yêu",
-    "chít": "chết", " lém": "lắm", " hỉu": "hiểu", " rùi": "rồi", " r": "rồi",
-    " thui": "thôi", " đc ": " được ", " wa ": " quá ", " quá ": " quá ",
-    " ship ": " giao hàng ", " shipper ": " người giao hàng ", " order ": " đặt hàng "
+    "kkkk": " cười ", "kkk": " cười ", "haha": " cười ", "huhu": " buồn ", "hic": " buồn ",
+    "ko": "không", "k": "không", "khong": "không", "hk": "không", "hem": "không",
+    "hok": "không", "kg": "không", "kp": "không phải", "hong": "không", "khum": "không",
+    "chx": "chưa", "cxk": "cũng không", "dc": "được", "dk": "được", "bt": "bình thường",
+    "bth": "bình thường", "cx": "cũng", "vs": "với", "wa": "quá", "qa": "quá",
+    "nt": "nhắn tin", "ib": "nhắn tin", "inb": "hộp thư", "ad": "quản trị viên",
+    "mn": "mọi người", "mng": "mọi người", "mik": "mình", "mk": "mình", "mjk": "mình",
+    "tui": "tôi", "toy": "tôi", "b": "bạn", "bn": "bạn", "bae": "bạn", "ny": "người yêu",
+    "tks": "cảm ơn", "thx": "cảm ơn", "thanks": "cảm ơn", "thank": "cảm ơn", "camon": "cảm ơn",
+    "j": "gì", "giz": "gì", "gik": "gì", "di": "gì", "s": "sao", "seo": "sao",
+    "saoz": "sao", "nta": "người ta", "oke": "ok", "okie": "ok", "oki": "ok",
+    "okela": "ok", "uh": "ừ", "uk": "ừ", "um": "ừ", "vl": "rất", "vkl": "rất", "cute": "dễ thương",
+    "ms": "mới", "lun": "luôn", "luon": "luôn", "suotng": "suốt ngày", "sp": "sản phẩm",
+    "shop": "cửa hàng", "sz": "size", "auth": "chính hãng", "rep": "trả lời", "tl": "trả lời",
+    "nv": "nhân viên", "feedback": "phản hồi", "fb": "facebook", "freeship": "miễn phí vận chuyển",
+    "ship": "giao hàng", "cod": "thanh toán khi nhận hàng", "sale": "giảm giá", "rv": "đánh giá",
+    "rate": "đánh giá", "deal": "khuyến mãi", "outdate": "hết hạn", "date": "hạn sử dụng",
+    "xịn": "tốt", "xin": "tốt", "xjn": "tốt", "xiu": "ít", "fake": "giả", "real": "thật",
+    "best": "tốt nhất", "good": "tốt", "bad": "tệ", "nice": "tốt", "perfect": "hoàn hảo",
+    "tr": "trời", "ưng": "thích"
+}
+
+EMOTICONS_DICT = {
+    "=))": " cười_mỉa_mai_chê ", ":))": " cười_vui_hài_lòng ", "🙂": " cười_nhẹ_tạm_ổn ",
+    "🙁": " buồn_thất_vọng ", "^^": " cười_tươi_ưng_ý ", "😣": " cực_kỳ_bực_mình ",
+    "><": " quá_tệ_bực_mình ", ":<": " thất_vọng_chê ", "._.": " bối_rối_khó_hiểu ",
+    "😑": " mệt_mỏi_thất_vọng ", "@@": " hoang_mang_ngỡ_ngàng "
+}
+
+EMOJI_DICT = {
+    "🥰": " rất_thích ", "😍": " ưng_ý ", "🤣": " cười_vui ", "😂": " cười_vui ",
+    "😀": " hài_lòng ", "😃": " vui_vẽ ", "😄": " hài_lòng ", "😁": " vui_lòng ",
+    "😆": " rất_vui ", "😅": " nhẹ_nhõm ", "😊": " hài_lòng ", "🙂": " tạm_ổn ",
+    "😋": " rất_ngon ", "🤤": " ngon_đỉnh ", "😎": " uy_tín ", "🤩": " quá_đẹp ", "🥳": " tuyệt_vời ",
+    "😭": " quá_thất_vọng ", "😡": " cực_kỳ_tệ ", "😠": " không_hài_lòng ", "🤬": " quá_tệ_bực_mình ",
+    "🙃": " mỉa_mai_chê ", "😒": " không_ưng_ý ", "😞": " thất_vọng ", "😔": " buồn_thất_vọng ",
+    "😟": " lo_lắng_hàng_giả ", "😕": " không_đúng_mô_tả ", "🙁": " chê_hàng_kém ", "😫": " mệt_mỏi_quá ",
+    "😩": " chán_nản ", "🥺": " thất_vọng_nhẹ ", "😢": " buồn_tiếc_tiền ", "😤": " bực_mình ",
+    "🤯": " bực_nổ_não ", "😳": " ngỡ_ngàng_tệ ", "😱": " hoảng_hốt_tệ ",
+    "👍": " chất_lượng_tốt ", "👎": " hàng_kém_chất_lượng ", "❤️": " rất_thích ", "💖": " yêu_thích ",
+    "💝": " quà_tặng_kèm ", "🌟": " năm_sao_chất_lượng ", "⭐": " chất_lượng_cao ", "🔥": " cực_hot_đáng_mua ",
+    "💯": " điểm_tuyệt_đối ", "❌": " lỗi_hỏng_không_mua ", "🚫": " cảnh_báo_tránh_xa ", "✅": " chuẩn_chính_hãng ", "✔️": " đúng_mô_tả "
 }
 
 
-def _replace_teencode(text: str) -> str:
+def normalize_unicode(text): return unicodedata.normalize("NFC", text)
+def remove_html_entities(text): return html.unescape(text)
+def remove_urls(text): return re.sub(r"http\S+|www\.\S+", " ", text)
+def remove_html_tags(text): return re.sub(r"<[^>]+>", " ", text)
+
+
+def remove_latex(text): return re.sub(
+    r"\$.*?\$|\\[a-zA-Z]+(\{.*?\})*", " ", text)
+
+
+def remove_control_chars(text): return "".join(
+    ch for ch in text if unicodedata.category(ch)[0] != "C")
+
+
+def split_stuck_vietnamese_words(text):
+    stuck_rules = [
+        (r'chấtlượng', 'chất lượng'), (r'chaatslượng', 'chất lượng'),
+        (r'hàngđẹp', 'hàng đẹp'), (r'giáhơi', 'giá hơi'),
+        (r'giátốt', 'giá tốt'), (r'giahơi', 'giá hơi'),
+        (r'shipnhanh', 'ship nhanh'), (r'đónggói', 'đóng gói'),
+        (r'chấtlương', 'chất lượng'), (r'spchất', 'sản phẩm chất')
+    ]
+    for pattern, repl in stuck_rules:
+        text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
+    return text
+
+
+def decode_telex_and_clean_tails(text):
+    text = re.sub(r'\bchaats\b', 'chất', text)
+    text = re.sub(r'\bchaat\b', 'chất', text)
+    text = re.sub(r'\bchats\b', 'chất', text)
+    text = re.sub(r'\bchasts\b', 'chất', text)
+    text = re.sub(r'\bkems\b', 'kém', text)
+    text = re.sub(r'\bnats\b', 'nát', text)
+    text = re.sub(r'\bmacs\b', 'mắc', text)
+    text = re.sub(r'\bdats\b', 'đắt', text)
+    text = re.sub(r'\bgais\b', 'giả', text)
+    text = re.sub(r'\bluaf\b', 'lừa', text)
+    text = re.sub(r'\bcuif\b', 'cùi', text)
+    text = re.sub(r'\bteef\b', 'tệ', text)
+    text = re.sub(r'\bdeuf\b', 'đều', text)
+    text = re.sub(r'\bbuonf\b', 'buồn', text)
+    text = re.sub(r'\bteej\b', 'tệ', text)
+    text = re.sub(r'\bnatj\b', 'nát', text)
+    text = re.sub(r'\bcoj\b', 'cọ', text)
+    text = re.sub(r'\bmeoj\b', 'móp', text)
+    text = re.sub(r'\bbaoj\b', 'bảo', text)
+    text = re.sub(r'\bthitj\b', 'thịt', text)
+    text = re.sub(r'\bxuaf\b', 'xấu', text)
+    text = re.sub(r'\bxaur\b', 'xấu', text)
+    text = re.sub(r'\bloir\b', 'lỗi', text)
+    text = re.sub(r'\bloix\b', 'lỗi', text)
+    text = re.sub(r'\bhogr\b', 'hỏng', text)
+    text = re.sub(r'\bhorgr\b', 'hỏng', text)
+    text = re.sub(r'\bdepf\b', 'đẹp', text)
+    text = re.sub(r'\bngonj\b', 'ngon', text)
+    text = re.sub(r'\bngonf\b', 'ngon', text)
+    text = re.sub(r'\bnhanhs\b', 'nhanh', text)
+    text = re.sub(r'\btoots\b', 'tốt', text)
+    text = re.sub(r'\btots\b', 'tốt', text)
+    text = re.sub(r'\bref\b', 'rẻ', text)
+    text = re.sub(r'\bthichs\b', 'thích', text)
+    text = re.sub(r'\bungs\b', 'ưng', text)
+    text = re.sub(r'\bchuans\b', 'chuẩn', text)
+    text = re.sub(r'\bxems\b', 'xem', text)
+    text = re.sub(r'\bmuas\b', 'mua', text)
+    text = re.sub(r'\bguij\b', 'gửi', text)
+    text = re.sub(r'\bdoif\b', 'đổi', text)
+    text = re.sub(r'\btral\b', 'trả', text)
+    text = re.sub(r'\bnhanj\b', 'nhận', text)
+    text = re.sub(r'\bdongf\b', 'đóng', text)
+    text = re.sub(
+        r'([áàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵ])([sfrxj])(?=\s|$)', r'\1', text)
+    return text
+
+
+def reduce_repeated_chars(text):
+    text = re.sub(
+        r'([aàáảãạăằắẳẵặâầấẩẫậeèéẻẽẹêềếểễệoòóỏõọôồốộơờớởỡợuùúủũụưừứửữựiìíỉĩịyỳýỷỹỵ])\1+', r'\1', text)
+    text = re.sub(r'(.)\1{1,}', r"\1", text)
+    return text
+
+
+def translate_lone_symbols(text):
+    text = re.sub(r'\s+=\s+', ' bang ', text)
+    text = text.replace("&amp;", " va ").replace("&", " va ").replace(
+        "%", " phan tram ").replace("+", " cong ")
+    return text
+
+
+def translate_emojis(text):
+    for emoji, text_rep in EMOJI_DICT.items():
+        text = text.replace(emoji, text_rep)
+    return text
+
+
+def translate_emoticons_safe(text):
+    sorted_emoticons = sorted(EMOTICONS_DICT.keys(), key=len, reverse=True)
+    for emoti in sorted_emoticons:
+        text = text.replace(emoti, f" {EMOTICONS_DICT[emoti]} ")
+    return text
+
+
+def normalize_teencode_only(text):
     words = text.split()
-    return " ".join([TEENCODE_DICT.get(word, word) for word in words])
+    return " ".join([TEENCODE_DICT.get(w.lower(), w) for w in words])
+
+
+def _tokenize_text(text: str) -> str:
+    # prefer underthesea, then pyvi, else fallback to simple whitespace tokenization
+    try:
+        from underthesea import word_tokenize as _ut_word_tokenize
+        try:
+            return _ut_word_tokenize(text, format="text")
+        except TypeError:
+            # older underthesea versions may not accept format kw
+            return _ut_word_tokenize(text)
+    except Exception:
+        try:
+            from pyvi.ViTokenizer import tokenize as _vi_tokenize
+            return _vi_tokenize(text)
+        except Exception:
+            # fallback: collapse spaces (already lowercased earlier) and return
+            return " ".join(text.split())
+
+
+def clean_text(text):
+    if text is None:
+        return ""
+    text = str(text)
+    text = normalize_unicode(text)
+    text = remove_html_entities(text)
+    text = remove_html_tags(text)
+    text = remove_urls(text)
+    text = remove_latex(text)
+    text = remove_control_chars(text)
+    text = text.lower()
+    text = translate_emoticons_safe(text)
+    text = translate_emojis(text)
+    text = split_stuck_vietnamese_words(text)
+    text = decode_telex_and_clean_tails(text)
+    text = reduce_repeated_chars(text)
+    text = normalize_teencode_only(text)
+    text = translate_lone_symbols(text)
+    text = re.sub(r"[^0-9a-zA-ZÀ-ỹà-ỹđĐ\s_]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = _tokenize_text(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    filtered_words = [word for word in text.split(
+    ) if word not in VIETNAMESE_STOPWORDS]
+    return " ".join(filtered_words)
 
 
 def preprocess_review_text(text: str) -> str:
-    if text is None:
-        return ""
-
-    normalized_text = str(text).strip().lower()
-    if not normalized_text or normalized_text == "nan":
-        return ""
-
-    normalized_text = unicodedata.normalize("NFC", normalized_text)
-    normalized_text = re.sub(r"https?://\S+|www\.\S+", " ", normalized_text)
-    normalized_text = re.sub(r"\S+@\S+", " ", normalized_text)
-    normalized_text = re.sub(r"\b\d{8,}\b", " ", normalized_text)
-    normalized_text = re.sub(r"([a-zàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễđìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹ])\1+", r"\1", normalized_text)
-    normalized_text = re.sub(
-        r"[^a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễđìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹ\s]",
-        " ",
-        normalized_text,
-    )
-    normalized_text = re.sub(r"\s+", " ", normalized_text).strip()
-    normalized_text = _replace_teencode(normalized_text)
-
-    try:
-        from pyvi import ViTokenizer
-        normalized_text = ViTokenizer.tokenize(normalized_text)
-    except Exception:
-        pass
-    print()
-
-    filtered_words = [word for word in normalized_text.split() if word not in VIETNAMESE_STOPWORDS]
-    return " ".join(filtered_words)
+    return clean_text(text)
 
 
 class HierarchicalClusteringModel:
@@ -127,12 +276,14 @@ class HierarchicalClusteringModel:
         return "Nhóm 3: Người qua đường dễ dãi"
 
 
-sys.modules.get("__main__", None) and setattr(sys.modules["__main__"], "HierarchicalClusteringModel", HierarchicalClusteringModel)
+sys.modules.get("__main__", None) and setattr(
+    sys.modules["__main__"], "HierarchicalClusteringModel", HierarchicalClusteringModel)
 
 CLUSTER_LABELS = {
     0: "Cụm 0: Chuyên gia đánh giá",
-    1: "Cụm 1: Khách hàng có tiêu chuẩn cao",
-    2: "Cụm 2: Khách hàng có tâm lý thoải mái",
+    1: "Cụm 1: Khách hàng có tâm lý thoải mái",
+    2: "Cụm 2: Khách hàng có tiêu chuẩn cao",
+    
 }
 
 
@@ -171,6 +322,7 @@ def default_review_analysis() -> Dict:
         "message": "Cluster model chưa được cấu hình hoặc chưa có file hierarchical_cluster_model_core.pkl.",
     }
 
+
 def load_model() -> Tuple[Optional[object], Optional[object]]:
     global _model, _tokenizer
     if _model is not None and _tokenizer is not None:
@@ -192,23 +344,23 @@ def load_model() -> Tuple[Optional[object], Optional[object]]:
 
 class PhoBertMultiTaskModel:
     """PhoBERT multitask model with sentiment and helpfulness heads."""
-    
+
     def __init__(self, device="cpu"):
         import torch
         import torch.nn as nn
         from transformers import AutoModel
-        
+
         self.device = device
         self.torch = torch
         self.nn = nn
         self.AutoModel = AutoModel
-        
+
         # Define model architecture
         self.phobert = self.AutoModel.from_pretrained(PHOBERT_NAME)
-        
+
         input_size = self.phobert.config.hidden_size  # 768
         mid_size = 384
-        
+
         # Sentiment head: 3 classes (negative, neutral, positive)
         self.sentiment_head = self.nn.Sequential(
             self.nn.Linear(input_size, mid_size),
@@ -216,7 +368,7 @@ class PhoBertMultiTaskModel:
             self.nn.Dropout(0.1),
             self.nn.Linear(mid_size, 3)
         )
-        
+
         # Helpfulness head: 2 outputs (key aspects, advice)
         self.helpfulness_head = self.nn.Sequential(
             self.nn.Linear(input_size, mid_size),
@@ -224,26 +376,27 @@ class PhoBertMultiTaskModel:
             self.nn.Dropout(0.1),
             self.nn.Linear(mid_size, 2)
         )
-        
+
         self.to(device)
         self.eval()
-    
+
     def forward(self, input_ids, attention_mask):
-        outputs = self.phobert(input_ids=input_ids, attention_mask=attention_mask)
+        outputs = self.phobert(input_ids=input_ids,
+                               attention_mask=attention_mask)
         cls_output = outputs.last_hidden_state[:, 0, :]
-        
+
         sent_logits = self.sentiment_head(cls_output)
         help_preds = self.helpfulness_head(cls_output)
-        
+
         return help_preds, sent_logits
-    
+
     def to(self, device):
         self.device = device
         self.phobert.to(device)
         self.sentiment_head.to(device)
         self.helpfulness_head.to(device)
         return self
-    
+
     def eval(self):
         self.phobert.eval()
         self.sentiment_head.eval()
@@ -254,7 +407,7 @@ class PhoBertMultiTaskModel:
 def load_multitask_model() -> Tuple[Optional[object], Optional[object]]:
     """Load PhoBERT multitask model (sentiment + helpfulness) and tokenizer."""
     global _multitask_model, _multitask_tokenizer
-    
+
     if _multitask_model is not None and _multitask_tokenizer is not None:
         return _multitask_model, _multitask_tokenizer
 
@@ -269,17 +422,20 @@ def load_multitask_model() -> Tuple[Optional[object], Optional[object]]:
 
     try:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+
         # Load tokenizer for PhoBERT multitask from HuggingFace
         _multitask_tokenizer = AutoTokenizer.from_pretrained(PHOBERT_NAME)
         _multitask_model = PhoBertMultiTaskModel(device=device)
-        
+
         # Load weights from .pt file
         state_dict = torch.load(MULTITASK_MODEL_PATH, map_location=device)
-        _multitask_model.phobert.load_state_dict({k.replace('phobert.', ''): v for k, v in state_dict.items() if k.startswith('phobert.')}, strict=False)
-        _multitask_model.sentiment_head.load_state_dict({k.replace('sentiment_head.', ''): v for k, v in state_dict.items() if k.startswith('sentiment_head.')}, strict=False)
-        _multitask_model.helpfulness_head.load_state_dict({k.replace('helpfulness_head.', ''): v for k, v in state_dict.items() if k.startswith('helpfulness_head.')}, strict=False)
-        
+        _multitask_model.phobert.load_state_dict({k.replace(
+            'phobert.', ''): v for k, v in state_dict.items() if k.startswith('phobert.')}, strict=False)
+        _multitask_model.sentiment_head.load_state_dict({k.replace(
+            'sentiment_head.', ''): v for k, v in state_dict.items() if k.startswith('sentiment_head.')}, strict=False)
+        _multitask_model.helpfulness_head.load_state_dict({k.replace(
+            'helpfulness_head.', ''): v for k, v in state_dict.items() if k.startswith('helpfulness_head.')}, strict=False)
+
         return _multitask_model, _multitask_tokenizer
     except Exception:
         return None, None
@@ -333,8 +489,10 @@ def load_cluster_model() -> Dict[str, object]:
             continue
 
         if hasattr(loaded, "scaler1") and hasattr(loaded, "kmeans1"):
-            has_stage1 = getattr(loaded, "scaler1", None) is not None and getattr(loaded, "kmeans1", None) is not None
-            has_stage2 = getattr(loaded, "scaler2", None) is not None and getattr(loaded, "kmeans2", None) is not None
+            has_stage1 = getattr(loaded, "scaler1", None) is not None and getattr(
+                loaded, "kmeans1", None) is not None
+            has_stage2 = getattr(loaded, "scaler2", None) is not None and getattr(
+                loaded, "kmeans2", None) is not None
             if has_stage1 and has_stage2:
                 loaded_bundle = {
                     "ready": True,
@@ -368,7 +526,8 @@ def load_cluster_model() -> Dict[str, object]:
             break
 
         if hasattr(loaded, "scaler2") and hasattr(loaded, "kmeans2") and hasattr(loaded, "helpfulness_threshold") and hasattr(loaded, "c_threshold"):
-            has_stage2 = getattr(loaded, "scaler2", None) is not None and getattr(loaded, "kmeans2", None) is not None
+            has_stage2 = getattr(loaded, "scaler2", None) is not None and getattr(
+                loaded, "kmeans2", None) is not None
             if has_stage2:
                 loaded_bundle = {
                     "ready": True,
@@ -444,7 +603,8 @@ def _predict_hierarchical_cluster(cluster_bundle: Dict[str, object], personality
         expert_cluster_id = None
         toxic_cluster_id = getattr(raw_bundle, "toxic_cluster_id", None)
         casual_cluster_id = getattr(raw_bundle, "casual_cluster_id", None)
-        helpfulness_threshold = float(getattr(raw_bundle, "helpfulness_threshold", 0.0))
+        helpfulness_threshold = float(
+            getattr(raw_bundle, "helpfulness_threshold", 0.0))
         c_threshold = float(getattr(raw_bundle, "c_threshold", 0.0))
     else:
         stage1_model = cluster_bundle.get("stage1_model")
@@ -454,19 +614,22 @@ def _predict_hierarchical_cluster(cluster_bundle: Dict[str, object], personality
         expert_cluster_id = cluster_bundle.get("expert_cluster_id")
         toxic_cluster_id = cluster_bundle.get("toxic_cluster_id")
         casual_cluster_id = cluster_bundle.get("casual_cluster_id")
-        helpfulness_threshold = float(cluster_bundle.get("helpfulness_threshold") or 0.0)
+        helpfulness_threshold = float(
+            cluster_bundle.get("helpfulness_threshold") or 0.0)
         c_threshold = float(cluster_bundle.get("c_threshold") or 0.0)
 
     if stage2_model is None or stage2_scaler is None:
         return None, None
 
     sentiment = multitask_scores.get("sentiment", {})
-    helpfulness = float(multitask_scores.get("helpfulness", {}).get("total", 0.0))
+    helpfulness = float(multitask_scores.get(
+        "helpfulness", {}).get("total", 0.0))
     conscientiousness = float(personality_scores.get("conscientiousness", 0.0))
     neuroticism = float(personality_scores.get("neuroticism", 0.0))
 
     if stage1_model is not None and stage1_scaler is not None:
-        stage1_vector = np.array([[helpfulness, conscientiousness]], dtype=float)
+        stage1_vector = np.array(
+            [[helpfulness, conscientiousness]], dtype=float)
         stage1_vector = stage1_scaler.transform(stage1_vector)
         stage1_cluster_id = int(stage1_model.predict(stage1_vector)[0])
 
@@ -546,10 +709,12 @@ def predict_personality(text: str, return_logits: bool = True) -> Dict[str, floa
         if all(0.0 <= v <= 1.0 for v in sigmoid_probs):
             scores = [float(v) for v in sigmoid_probs]
         else:
-            scores = [float(v) for v in torch.softmax(logits, dim=-1)[0].tolist()]
+            scores = [float(v)
+                      for v in torch.softmax(logits, dim=-1)[0].tolist()]
     except Exception:
         try:
-            scores = [float(v) for v in torch.softmax(logits, dim=-1)[0].tolist()]
+            scores = [float(v)
+                      for v in torch.softmax(logits, dim=-1)[0].tolist()]
         except Exception:
             return default_personality_scores()
 
@@ -578,7 +743,7 @@ def predict_multitask_scores(text: str, round_output: bool = True) -> Dict:
 
     try:
         device = model.device
-        
+
         # Tokenize raw input to match the Kaggle training/evaluation pipeline.
         cleaned_text = str(text or "").strip()
 
@@ -595,14 +760,16 @@ def predict_multitask_scores(text: str, round_output: bool = True) -> Dict:
         # Run inference
         with torch.no_grad():
             help_preds, sent_logits = model.forward(input_ids, attention_mask)
-            
+
             # --- Helpfulness (Regression) ---
             # Clamp outputs to [0, 1] range (matching training data range)
-            help_preds_clamped = torch.clamp(help_preds, 0.0, 1.0).cpu().numpy()[0]
+            help_preds_clamped = torch.clamp(
+                help_preds, 0.0, 1.0).cpu().numpy()[0]
             final_key_aspects_score = float(help_preds_clamped[0])
             final_advice_score = float(help_preds_clamped[1])
-            final_helpfulness_total = (final_key_aspects_score + final_advice_score) / 2.0
-            
+            final_helpfulness_total = (
+                final_key_aspects_score + final_advice_score) / 2.0
+
             # --- Sentiment (Classification) ---
             probabilities = F.softmax(sent_logits, dim=1)[0].cpu().numpy()
             prob_negative = float(probabilities[0])
@@ -624,7 +791,7 @@ def predict_multitask_scores(text: str, round_output: bool = True) -> Dict:
                     "total": round(final_helpfulness_total, 2),
                 }
             }
-        
+
         return {
             "sentiment": {
                 "negative": prob_negative,
@@ -638,7 +805,7 @@ def predict_multitask_scores(text: str, round_output: bool = True) -> Dict:
                 "total": final_helpfulness_total,
             }
         }
-    
+
     except Exception as e:
         return default_multitask_scores()
 
@@ -678,11 +845,13 @@ def predict_review_analysis(text: str) -> Dict:
     }
 
     if not cluster_bundle.get("ready"):
-        response["message"] = cluster_bundle.get("message") or "Không tìm thấy file hierarchical_cluster_model_core.pkl để gán cluster."
+        response["message"] = cluster_bundle.get(
+            "message") or "Không tìm thấy file hierarchical_cluster_model_core.pkl để gán cluster."
         return response
 
     try:
-        cluster_id, cluster_label = _predict_hierarchical_cluster(cluster_bundle, personality_scores, multitask_scores)
+        cluster_id, cluster_label = _predict_hierarchical_cluster(
+            cluster_bundle, personality_scores, multitask_scores)
         if cluster_id is None:
             response["message"] = (
                 "Không thể suy ra cluster từ model phân cụm đã tải. "
@@ -695,7 +864,8 @@ def predict_review_analysis(text: str) -> Dict:
             return response
 
         response["cluster"] = cluster_id
-        response["cluster_label"] = cluster_label or CLUSTER_LABELS.get(cluster_id, f"Cụm {cluster_id}")
+        response["cluster_label"] = cluster_label or CLUSTER_LABELS.get(
+            cluster_id, f"Cụm {cluster_id}")
     except Exception as e:
         response["cluster_model_ready"] = False
         response["message"] = f"Không thể suy ra cluster từ model phân cụm đã tải: {e}"
